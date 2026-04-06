@@ -1,0 +1,292 @@
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>CryptoBot Dashboard</title>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500;600&family=DM+Sans:wght@400;500&display=swap');
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0a0b0e;color:#e2e8f0;font-family:'DM Sans',sans-serif;font-size:14px;min-height:100vh;padding:20px}
+  .container{max-width:1100px;margin:0 auto}
+  .header{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+  .header-left{display:flex;align-items:center;gap:12px}
+  .logo{width:36px;height:36px;border-radius:8px;background:#00d4aa15;border:1px solid #00d4aa33;display:flex;align-items:center;justify-content:center}
+  .logo svg{width:18px;height:18px;stroke:#00d4aa;fill:none;stroke-width:2}
+  .title{font-size:16px;font-weight:500;color:#e2e8f0}
+  .subtitle{font-size:12px;color:#718096;display:flex;align-items:center;gap:6px;margin-top:2px}
+  .dot{width:7px;height:7px;border-radius:50%;background:#00d4aa;display:inline-block}
+  .dot.offline{background:#ff4d6d}
+  @keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+  .dot.live{animation:pulse 2s infinite}
+  .clock{font-family:'JetBrains Mono',monospace;font-size:12px;color:#4a5568}
+  .mode-badge{font-size:11px;padding:3px 10px;border-radius:4px;background:#f5a62315;color:#f5a623;border:1px solid #f5a62333;font-family:'JetBrains Mono',monospace}
+  .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:20px}
+  .stat-card{background:#111318;border:1px solid #1e2430;border-radius:10px;padding:14px 16px}
+  .stat-card.accent{border-color:#00d4aa33;background:#00d4aa08}
+  .stat-card.danger{border-color:#ff4d6d33;background:#ff4d6d08}
+  .stat-label{font-size:11px;color:#718096;text-transform:uppercase;letter-spacing:.06em;margin-bottom:6px}
+  .stat-value{font-size:22px;font-weight:500;font-family:'JetBrains Mono',monospace;color:#e2e8f0}
+  .stat-value.green{color:#00d4aa}
+  .stat-value.red{color:#ff4d6d}
+  .stat-sub{font-size:11px;color:#4a5568;margin-top:4px}
+  .main-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+  .panel{background:#111318;border:1px solid #1e2430;border-radius:10px;padding:16px}
+  .panel-title{font-size:11px;color:#4a5568;text-transform:uppercase;letter-spacing:.07em;margin-bottom:12px;display:flex;align-items:center;gap:6px}
+  .panel-dot{width:5px;height:5px;border-radius:50%}
+  .pos-card{background:#0d0f14;border:1px solid #1e2430;border-radius:8px;padding:12px;margin-bottom:8px;transition:border-color .3s}
+  .pos-card:hover{border-color:#2d3748}
+  .pos-header{display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:8px}
+  .pos-sym{display:flex;align-items:center;gap:6px}
+  .sym-dot{width:6px;height:6px;border-radius:50%}
+  .sym-name{font-family:'JetBrains Mono',monospace;font-weight:500;font-size:13px}
+  .badge{font-size:10px;padding:2px 6px;border-radius:4px;font-weight:500;font-family:'JetBrains Mono',monospace}
+  .badge.long{background:#00d4aa15;color:#00d4aa;border:1px solid #00d4aa33}
+  .badge.short{background:#ff4d6d15;color:#ff4d6d;border:1px solid #ff4d6d33}
+  .badge.large{background:#f5a62315;color:#f5a623;border:1px solid #f5a62333}
+  .badge.sync{background:#71809615;color:#718096;border:1px solid #71809633}
+  .pos-pnl{text-align:right;font-family:'JetBrains Mono',monospace;font-weight:500;font-size:13px}
+  .pos-prices{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:8px}
+  .price-field label{font-size:10px;color:#4a5568;display:block;margin-bottom:2px}
+  .price-field span{font-family:'JetBrains Mono',monospace;font-size:11px;color:#e2e8f0}
+  .price-field span.sl{color:#ff4d6d}
+  .dist-badges{display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px}
+  .dist-badge{font-size:10px;padding:2px 6px;border-radius:4px;font-family:'JetBrains Mono',monospace}
+  .dist-badge.sl{background:#ff4d6d08;color:#ff4d6d;border:1px solid #ff4d6d22}
+  .dist-badge.be{background:#f5a62308;color:#f5a623;border:1px solid #f5a62322}
+  .dist-badge.tp1{background:#00d4aa08;color:#00d4aa;border:1px solid #00d4aa22}
+  .bar-info{display:flex;justify-content:space-between;font-size:10px;color:#4a5568;margin-bottom:3px}
+  .progress{height:3px;border-radius:2px;background:#1e2430;overflow:hidden}
+  .progress-fill{height:100%;border-radius:2px;transition:width .5s ease}
+  .strat{font-size:10px;color:#4a5568;margin-top:4px}
+  .trade-row{display:flex;align-items:center;justify-content:space-between;padding:8px 10px;border-radius:6px;border:1px solid;margin-bottom:4px}
+  .trade-row.win{background:#00d4aa06;border-color:#00d4aa1a}
+  .trade-row.loss{background:#ff4d6d06;border-color:#ff4d6d1a}
+  .trade-left{display:flex;align-items:center;gap:6px;font-size:12px}
+  .trade-dot{width:5px;height:5px;border-radius:50%}
+  .trade-right{display:flex;align-items:center;gap:10px;font-size:11px}
+  .trade-reason{color:#4a5568}
+  .trade-pnl{font-family:'JetBrains Mono',monospace;font-weight:500}
+  .empty{text-align:center;color:#4a5568;padding:24px;font-size:12px}
+  .btn-row{display:flex;gap:8px;margin-bottom:16px}
+  .btn{font-size:12px;padding:7px 16px;border-radius:7px;border:1px solid;background:transparent;cursor:pointer;font-family:'JetBrains Mono',monospace;transition:all .15s}
+  .btn-start{border-color:#00d4aa44;color:#00d4aa}.btn-start:hover{background:#00d4aa15}
+  .btn-stop{border-color:#ff4d6d44;color:#ff4d6d}.btn-stop:hover{background:#ff4d6d15}
+  .status-bar{background:#111318;border:1px solid #1e2430;border-radius:7px;padding:8px 14px;margin-bottom:16px;font-size:11px;font-family:'JetBrains Mono',monospace;color:#4a5568}
+  @media(max-width:768px){.stats-grid{grid-template-columns:repeat(2,1fr)}.main-grid{grid-template-columns:1fr}}
+</style>
+</head>
+<body>
+<div class="container">
+  <div class="header">
+    <div class="header-left">
+      <div class="logo">
+        <svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg>
+      </div>
+      <div>
+        <div class="title">CryptoBot Dashboard</div>
+        <div class="subtitle">
+          <span class="dot offline live" id="conn-dot"></span>
+          <span id="conn-txt">Bağlanıyor...</span>
+          <span style="color:#2d3748">·</span>
+          <span id="mode-txt">—</span>
+          <span style="color:#2d3748">·</span>
+          <span id="exch-txt">—</span>
+        </div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:center;gap:10px">
+      <span class="mode-badge" id="trade-mode">PAPER</span>
+      <span class="clock" id="clk">--:--:--</span>
+    </div>
+  </div>
+
+  <div class="btn-row">
+    <button class="btn btn-start" onclick="botAction('start')">▶ Başlat</button>
+    <button class="btn btn-stop" onclick="botAction('stop')">■ Durdur</button>
+  </div>
+
+  <div class="status-bar" id="status-bar">Bağlantı kuruluyor...</div>
+
+  <div class="stats-grid">
+    <div class="stat-card accent">
+      <div class="stat-label">Bakiye</div>
+      <div class="stat-value green" id="s-bal">—</div>
+      <div class="stat-sub" id="s-avail">—</div>
+    </div>
+    <div class="stat-card" id="pnl-card">
+      <div class="stat-label">Toplam PnL</div>
+      <div class="stat-value" id="s-pnl">—</div>
+      <div class="stat-sub" id="s-dpnl">—</div>
+    </div>
+    <div class="stat-card">
+      <div class="stat-label">Kazanma Oranı</div>
+      <div class="stat-value" id="s-wr">—</div>
+      <div class="stat-sub" id="s-pf">—</div>
+    </div>
+    <div class="stat-card accent">
+      <div class="stat-label">Açık Pozisyon</div>
+      <div class="stat-value green" id="s-pos">—</div>
+      <div class="stat-sub" id="s-posub">—</div>
+    </div>
+  </div>
+
+  <div class="main-grid">
+    <div>
+      <div class="panel-title"><span class="panel-dot" style="background:#00d4aa"></span>Açık Pozisyonlar</div>
+      <div id="pos-list"><div class="empty">Bağlantı bekleniyor...</div></div>
+    </div>
+    <div>
+      <div class="panel-title"><span class="panel-dot" style="background:#718096"></span>Son İşlemler</div>
+      <div class="panel" style="max-height:600px;overflow-y:auto">
+        <div id="tr-list"><div class="empty">Bağlantı bekleniyor...</div></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+const API = window.location.origin;
+let es = null;
+
+const fd = (n,d=2) => (n??0).toFixed(d);
+const fD = n => (n>=0?'+$':'-$')+Math.abs(n??0).toFixed(2);
+const fP = n => (n>=0?'+':'')+fd(n)+'%';
+
+function setStatus(msg, type) {
+  const el = document.getElementById('status-bar');
+  el.textContent = msg;
+  el.style.color = type==='ok'?'#00d4aa':type==='err'?'#ff4d6d':'#718096';
+}
+
+function setConn(on) {
+  const dot = document.getElementById('conn-dot');
+  dot.className = 'dot live ' + (on?'':'offline');
+  document.getElementById('conn-txt').textContent = on?'Canlı bağlı':'Bağlantı yok';
+}
+
+function renderStats(s, bot) {
+  if(!s) return;
+  document.getElementById('s-bal').textContent = '$'+(s.totalBalance??0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('s-avail').textContent = 'Serbest: $'+(s.availableBalance??0).toFixed(2);
+  const pnl = s.totalPnl??0;
+  const pe = document.getElementById('s-pnl');
+  pe.textContent = fD(pnl);
+  pe.className = 'stat-value '+(pnl>=0?'green':'red');
+  document.getElementById('s-dpnl').textContent = 'Bugün: '+fD(s.dailyPnl??0);
+  document.getElementById('s-wr').textContent = '%'+fd(s.winRate??0,1);
+  document.getElementById('s-pf').textContent = 'PF '+fd(s.profitFactor??0)+' · '+(s.totalTrades??0)+' işlem';
+  if(bot) {
+    document.getElementById('mode-txt').textContent = (bot.mode||'').toUpperCase();
+    document.getElementById('exch-txt').textContent = (bot.exchange||'').toUpperCase();
+    document.getElementById('trade-mode').textContent = (bot.mode||'paper').toUpperCase();
+  }
+}
+
+function renderPositions(positions) {
+  const el = document.getElementById('pos-list');
+  if(!positions||!positions.length){
+    el.innerHTML='<div class="empty">Açık pozisyon yok</div>';
+    document.getElementById('s-pos').textContent='0';
+    document.getElementById('s-posub').textContent='—';
+    return;
+  }
+  const longs=positions.filter(p=>p.side==='long').length;
+  const shorts=positions.filter(p=>p.side==='short').length;
+  document.getElementById('s-pos').textContent=String(positions.length);
+  document.getElementById('s-posub').textContent=longs+' Long · '+shorts+' Short';
+  el.innerHTML=positions.map(p=>{
+    const il=p.side==='long';
+    const pnl=p.pnl??0;
+    const pnlP=p.pnl_percent??0;
+    const bars=p.candles_held??0;
+    const maxB=p.max_bars??8;
+    const bp=Math.min(100,(bars/Math.max(1,maxB))*100);
+    const bc=bp>80?'#ff4d6d':bp>60?'#f5a623':'#00d4aa';
+    const sym=(p.symbol||'').replace('USDT','');
+    return`<div class="pos-card">
+      <div class="pos-header">
+        <div class="pos-sym">
+          <div class="sym-dot" style="background:${il?'#00d4aa':'#ff4d6d'}"></div>
+          <span class="sym-name">${sym}/USDT</span>
+          <span class="badge ${il?'long':'short'}">${(p.side||'').toUpperCase()} ${p.leverage??1}x</span>
+          ${p.lot_type==='large'?'<span class="badge large">LARGE</span>':''}
+          ${p.is_adopted?'<span class="badge sync">SYNC</span>':''}
+        </div>
+        <div class="pos-pnl" style="color:${pnl>=0?'#00d4aa':'#ff4d6d'}">${fD(pnl)}<br><span style="font-size:10px">${fP(pnlP)}</span></div>
+      </div>
+      <div class="pos-prices">
+        <div class="price-field"><label>Giriş</label><span>$${(p.entry_price??0).toLocaleString()}</span></div>
+        <div class="price-field"><label>Güncel</label><span style="color:${il?'#00d4aa':'#ff4d6d'}">$${(p.current_price??0).toLocaleString()}</span></div>
+        <div class="price-field"><label>Stop</label><span class="sl">$${(p.stop_loss??0).toLocaleString()}</span></div>
+      </div>
+      <div class="dist-badges">
+        ${p.distance_to_sl_pct!=null?`<span class="dist-badge sl">SL ${fd(Math.abs(p.distance_to_sl_pct))}%</span>`:''}
+        ${p.distance_to_be_pct!=null?`<span class="dist-badge be">BE ${fd(Math.abs(p.distance_to_be_pct))}%</span>`:''}
+        ${p.distance_to_tp1_pct!=null?`<span class="dist-badge tp1">TP1 ${fd(Math.abs(p.distance_to_tp1_pct))}%</span>`:''}
+      </div>
+      <div class="bar-info"><span>Mum ${bars}/${maxB}</span><span>${Math.max(0,maxB-bars)} bar kaldı</span></div>
+      <div class="progress"><div class="progress-fill" style="width:${bp}%;background:${bc}"></div></div>
+      <div class="strat">${p.strategy_name||''}</div>
+    </div>`;
+  }).join('');
+}
+
+function renderTrades(trades) {
+  const el = document.getElementById('tr-list');
+  if(!trades||!trades.length){el.innerHTML='<div class="empty">Henüz işlem yok</div>';return;}
+  el.innerHTML=trades.slice(0,20).map(t=>{
+    const pnl=t.pnl??0;
+    const sym=(t.symbol||'').replace('USDT','');
+    return`<div class="trade-row ${pnl>=0?'win':'loss'}">
+      <div class="trade-left">
+        <div class="trade-dot" style="background:${pnl>=0?'#00d4aa':'#ff4d6d'}"></div>
+        <span>${sym}/USDT</span>
+        <span style="color:${t.side==='long'?'#00d4aa':'#ff4d6d'};font-size:10px">${(t.side||'').toUpperCase()}</span>
+      </div>
+      <div class="trade-right">
+        <span class="trade-reason">${(t.exit_reason||'').replace(/_/g,' ')}</span>
+        <span class="trade-pnl" style="color:${pnl>=0?'#00d4aa':'#ff4d6d'}">${fD(pnl)}</span>
+      </div>
+    </div>`;
+  }).join('');
+}
+
+function updateClock(){document.getElementById('clk').textContent=new Date().toLocaleTimeString('tr-TR')}
+
+function connect() {
+  if(es){es.close();es=null;}
+  setStatus('Bağlanıyor...');
+  setConn(false);
+  es = new EventSource(API+'/api/stream');
+  es.onopen = ()=>{setConn(true);setStatus('Canlı bağlantı aktif — Railway SSE','ok');};
+  es.onmessage = e=>{
+    try{
+      const d=JSON.parse(e.data);
+      renderStats(d.stats,d.botStatus);
+      renderPositions(d.positions);
+      renderTrades(d.recentTrades);
+      updateClock();
+    }catch(err){setStatus('Veri hatası: '+err.message,'err');}
+  };
+  es.onerror = ()=>{
+    setConn(false);
+    setStatus('Bağlantı kesildi — 5sn sonra yeniden denenecek','err');
+    es.close();
+    setTimeout(connect,5000);
+  };
+}
+
+async function botAction(action) {
+  try{
+    const r = await fetch(API+'/api/bot/'+action,{method:'POST'});
+    const d = await r.json();
+    setStatus('Bot '+(action==='start'?'başlatıldı':'durduruldu'),'ok');
+  }catch(e){setStatus('Hata: '+e.message,'err');}
+}
+
+setInterval(updateClock,1000);
+connect();
+</script>
+</body>
+</html>
