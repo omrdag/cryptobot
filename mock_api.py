@@ -196,3 +196,12 @@ def start():
 @app.post("/api/bot/stop")
 def stop():
     return {"ok": True, "running": False}
+
+from fastapi.responses import HTMLResponse
+import os
+
+@app.get("/")
+def dashboard():
+    html_path = os.path.join(os.path.dirname(__file__), "dashboard.html")
+    with open(html_path) as f:
+        return HTMLResponse(f.read())
