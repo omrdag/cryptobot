@@ -1,67 +1,62 @@
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import StreamingResponse, JSONResponse, HTMLResponse
-import asyncio
-import json
-import random
-import os
-import urllib.request
+import asyncio, json, os, urllib.request
 from datetime import datetime, timedelta
 
 app = FastAPI()
 app.add_middleware(CORSMiddleware, allow_origins=["*"], allow_methods=["*"], allow_headers=["*"])
 
-# ── Gerçek Binance fiyatı (urllib — ek kütüphane gerekmez) ───────────────────
 _prices = {"BTCUSDT": 0.0, "ETHUSDT": 0.0, "SOLUSDT": 0.0}
+OKX_SYMBOLS = {"BTCUSDT": "BTC-USDT", "ETHUSDT": "ETH-USDT", "SOLUSDT": "SOL-USDT"}
 
-def fetch_price(symbol: str) -> float:
+def fetch_okx_price(symbol: str) -> float:
+    """OKX public API — Railway'den erişilebilir, key gerekmez."""
     try:
-        url = f"https://api.binance.com/api/v3/ticker/price?symbol={symbol}"
-        with urllib.request.urlopen(url, timeout=3) as r:
+        inst = OKX_SYMBOLS.get(symbol, symbol.replace("USDT", "-USDT"))
+        url = f"https://www.okx.com/api/v5/market/ticker?instId={inst}"
+        with urllib.request.urlopen(url, timeout=5) as r:
             data = json.loads(r.read())
-            return float(data.get("price", 0))
+            return float(data["data"][0]["last"])
     except Exception:
         return 0.0
 
 def refresh_prices():
     for sym in _prices:
-        p = fetch_price(sym)
+        p = fetch_okx_price(sym)
         if p > 0:
             _prices[sym] = p
 
-# İlk fiyatları çek
 refresh_prices()
 
-# ── Pozisyonlar ───────────────────────────────────────────────────────────────
 ENTRIES = {"BTCUSDT": 83420.0, "ETHUSDT": 3180.0, "SOLUSDT": 148.5}
 SIDES   = {"BTCUSDT": "long",  "ETHUSDT": "long",  "SOLUSDT": "short"}
 QTYS    = {"BTCUSDT": 0.021,   "ETHUSDT": 0.55,    "SOLUSDT": 6.7}
 LOTS    = {"BTCUSDT": "large", "ETHUSDT": "standard", "SOLUSDT": "standard"}
 STRATS  = {"BTCUSDT": "Pullback Long", "ETHUSDT": "Pullback Long", "SOLUSDT": "Pullback Short"}
 CANDLES = {"BTCUSDT": 3, "ETHUSDT": 1, "SOLUSDT": 5}
-TICK    = 0
+TICK = 0
 
 def build_positions():
     result = []
     for i, sym in enumerate(["BTCUSDT", "ETHUSDT", "SOLUSDT"]):
-        price  = _prices.get(sym) or ENTRIES[sym]
-        entry  = ENTRIES[sym]
-        side   = SIDES[sym]
-        qty    = QTYS[sym]
-        lev    = 10
-        pnl    = round((price - entry) * qty * lev if side == "long" else (entry - price) * qty * lev, 2)
-        pnl_p  = round(pnl / (entry * qty) * 100, 2)
-        notional = round(price * qty * lev, 2)
-        sl     = entry * (0.975 if side == "long" else 1.025)
-        tp     = entry * (1.04  if side == "long" else 0.96)
+        price = _prices.get(sym) or ENTRIES[sym]
+        entry = ENTRIES[sym]
+        side  = SIDES[sym]
+        qty   = QTYS[sym]
+        lev   = 10
+        pnl   = round((price - entry) * qty * lev if side == "long" else (entry - price) * qty * lev, 2)
+        pnl_p = round(pnl / (entry * qty) * 100, 2)
+        sl    = entry * (0.975 if side == "long" else 1.025)
+        tp    = entry * (1.04  if side == "long" else 0.96)
         result.append({
-            "id": i+1, "symbol": sym,
-            "side": side,
-            "entry_price": entry, "current_price": round(price, 4 if price < 10 else 2),
+            "id": i+1, "symbol": sym, "side": side,
+            "entry_price": entry,
+            "current_price": round(price, 2 if price > 10 else 6),
             "quantity": qty, "leverage": lev,
             "pnl": pnl, "pnl_percent": pnl_p,
             "stop_loss": round(sl, 2), "take_profit": round(tp, 2),
-            "notional": notional,
+            "notional": round(price * qty * lev, 2),
             "candles_held": CANDLES[sym], "max_bars": 8,
             "bars_remaining": max(0, 8 - CANDLES[sym]),
             "lot_type": LOTS[sym], "is_adopted": sym == "SOLUSDT",
@@ -86,45 +81,32 @@ def build_payload():
     positions = build_positions()
     total_unr = sum(p["pnl"] for p in positions)
     return {
-        "positions":    positions,
-        "recentTrades": trades,
+        "positions": positions, "recentTrades": trades,
         "stats": {
-            "totalBalance":      round(10000 + total_unr, 2),
-            "availableBalance":  6120.0,
-            "unrealizedPnl":     round(total_unr, 2),
-            "totalPnl":          284.4,
-            "dailyPnl":          47.2,
-            "winRate":           63.4,
-            "profitFactor":      1.82,
-            "totalTrades":       41,
-            "winningTrades":     26,
-            "losingTrades":      15,
-            "consecutiveLosses": 0,
-            "openPositions":     len(positions),
+            "totalBalance": round(10000 + total_unr, 2),
+            "availableBalance": 6120.0,
+            "unrealizedPnl": round(total_unr, 2),
+            "totalPnl": 284.4, "dailyPnl": 47.2,
+            "winRate": 63.4, "profitFactor": 1.82,
+            "totalTrades": 41, "winningTrades": 26,
+            "losingTrades": 15, "consecutiveLosses": 0,
+            "openPositions": len(positions),
         },
-        "botStatus": {
-            "running":  True,
-            "mode":     "paper",
-            "exchange": "binance",
-        },
+        "botStatus": {"running": True, "mode": "paper", "exchange": "okx"},
         "timestamp": datetime.now().isoformat()
     }
 
 async def sse_generator(request: Request):
     global TICK
     while True:
-        if await request.is_disconnected():
-            break
+        if await request.is_disconnected(): break
         TICK += 1
-        # Her 3 tick'te bir Binance'den fiyat çek
         if TICK % 3 == 0:
             loop = asyncio.get_event_loop()
             await loop.run_in_executor(None, refresh_prices)
-        # Mum sayacını ilerlet
         if TICK % 20 == 0:
             for sym in CANDLES:
-                if CANDLES[sym] < 8:
-                    CANDLES[sym] += 1
+                if CANDLES[sym] < 8: CANDLES[sym] += 1
         yield f"data: {json.dumps(build_payload())}\n\n"
         await asyncio.sleep(2)
 
@@ -132,8 +114,7 @@ async def sse_generator(request: Request):
 def dashboard():
     html_file = os.path.join(os.path.dirname(os.path.abspath(__file__)), "dashboard.html")
     try:
-        with open(html_file, "r", encoding="utf-8") as f:
-            return HTMLResponse(f.read())
+        with open(html_file, "r", encoding="utf-8") as f: return HTMLResponse(f.read())
     except FileNotFoundError:
         return HTMLResponse("<h1>dashboard.html bulunamadi</h1>", status_code=404)
 
@@ -144,7 +125,7 @@ async def stream(request: Request):
 
 @app.get("/api/health")
 def health():
-    return {"ok": True, "exchange": "binance", "btc_price": _prices.get("BTCUSDT", 0), "timestamp": datetime.now().isoformat()}
+    return {"ok": True, "exchange": "okx", "btc_price": _prices.get("BTCUSDT", 0), "timestamp": datetime.now().isoformat()}
 
 @app.get("/api/positions")
 def get_positions(): return JSONResponse(build_positions())
@@ -154,7 +135,7 @@ def get_trades(): return JSONResponse(trades)
 
 @app.get("/api/settings")
 def get_settings():
-    return {"trading_mode": "paper", "leverage": 10, "bot_running": True, "exchange": "binance"}
+    return {"trading_mode": "paper", "leverage": 10, "bot_running": True, "exchange": "okx"}
 
 @app.put("/api/settings")
 async def update_settings(request: Request): return {"ok": True}
