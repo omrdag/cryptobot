@@ -16,8 +16,6 @@
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:13px;overflow:hidden}
 .layout{display:grid;grid-template-columns:220px 1fr;height:100vh}
-
-/* ── Sidebar ── */
 .sidebar{background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column}
 .brand{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
 .brand-icon{width:32px;height:32px;border-radius:8px;background:linear-gradient(135deg,#00ffaa15,#0088ff10);border:1px solid #00ffaa25;display:flex;align-items:center;justify-content:center}
@@ -40,8 +38,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 .nav-label{font-size:12px;font-weight:400}
 .nav-ver{padding:10px 14px;font-size:10px;color:var(--dim2);font-family:'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:space-between}
 .live-badge{font-size:9px;color:var(--danger);border:1px solid #ff335530;padding:2px 7px;border-radius:3px;font-family:'IBM Plex Mono',monospace}
-
-/* ── Main ── */
 .main{display:flex;flex-direction:column;overflow:hidden}
 .topbar{background:var(--s1);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
 .page-title{font-size:20px;font-weight:600;letter-spacing:-.3px;font-family:'IBM Plex Mono',monospace}
@@ -51,12 +47,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 .top-btns{display:flex;gap:6px}
 .tbtn{padding:5px 12px;border-radius:5px;border:1px solid;font-size:11px;font-weight:500;cursor:pointer;background:transparent;font-family:'IBM Plex Mono',monospace;transition:all .15s}
 .tb-stop{border-color:var(--border2);color:var(--dim)}.tb-live{border-color:#ff335530;color:var(--danger)}.tb-notif{border-color:#ffaa0030;color:var(--gold)}.tb-test{border-color:var(--border);color:var(--dim2)}
-
-/* ── Content ── */
 .content{flex:1;overflow-y:auto;padding:18px}
 .page{display:none}.page.active{display:block}
-
-/* ── Stat grid ── */
 .sg1{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
 .sc{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px;position:relative;overflow:hidden}
 .sc-icon{position:absolute;top:12px;right:12px;width:26px;height:26px;border-radius:6px;background:var(--s2);display:flex;align-items:center;justify-content:center}
@@ -84,8 +76,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 .empty-box{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:24px;text-align:center;margin-bottom:12px}
 .empty-box svg{width:32px;height:32px;stroke:var(--dim2);fill:none;stroke-width:1.5;opacity:.4;margin-bottom:8px}
 .empty-txt{font-size:11px;color:var(--dim)}
-
-/* ── Position cards ── */
 .pos-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
 .pc{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:12px;transition:border-color .2s}
 .pc:hover{border-color:var(--border2)}
@@ -108,8 +98,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 .pc-pnl{text-align:right}
 .pc-pnl-val{font-size:14px;font-weight:700;font-family:'IBM Plex Mono',monospace}
 .pc-pnl-pct{font-size:10px;font-family:'IBM Plex Mono',monospace;margin-top:1px}
-
-/* ── Signal Intelligence ── */
 .sig-header{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px}
 .sig-stat{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center}
 .sig-stat-val{font-size:18px;font-weight:700;font-family:'IBM Plex Mono',monospace;margin-bottom:2px}
@@ -147,8 +135,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 .sdp-ind-row:last-child{border-bottom:none}
 .sdp-ind-name{color:var(--dim);font-family:'IBM Plex Mono',monospace}
 .sdp-ind-val{font-family:'IBM Plex Mono',monospace;font-weight:500}
-
-/* ── Trade History ── */
 .th-tabs{display:flex;gap:6px;margin-bottom:12px}
 .th-tab{padding:5px 14px;border-radius:5px;border:1px solid var(--border);font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;color:var(--dim);background:transparent;transition:all .15s}
 .th-tab.active{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600}
@@ -167,8 +153,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 .th-strat{font-size:9px;color:var(--dim)}
 .th-status{font-size:9px;padding:2px 8px;border-radius:4px;font-weight:600;font-family:'IBM Plex Mono',monospace;background:var(--s2);color:var(--dim);border:1px solid var(--border)}
 .th-pnl{font-size:13px;font-weight:700;font-family:'IBM Plex Mono',monospace;text-align:right}
-
-/* ── Performance ── */
 .perf-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px}
 .perf-card{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px}
 .perf-title{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;font-family:'IBM Plex Mono',monospace}
@@ -179,8 +163,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 .bar-track{flex:1;height:5px;border-radius:3px;background:var(--border);overflow:hidden}
 .bar-fill{height:100%;border-radius:3px;transition:width .8s}
 .bar-val{min-width:35px;text-align:right;font-weight:600;font-family:'IBM Plex Mono',monospace}
-
-/* ── System Logs ── */
 .log-list{background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-family:'IBM Plex Mono',monospace}
 .log-row{padding:8px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;font-size:10px}
 .log-row:last-child{border-bottom:none}
@@ -190,8 +172,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 .log-level.warn{color:var(--gold)}
 .log-level.err{color:var(--danger)}
 .log-msg{color:var(--text)}
-
-/* ── Settings ── */
 .settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
 .settings-card{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px}
 .settings-title{font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;margin-bottom:12px;color:var(--text)}
@@ -200,12 +180,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 .setting-label{color:var(--dim)}
 .setting-val{font-family:'IBM Plex Mono',monospace;font-weight:500;color:var(--text)}
 .setting-val.g{color:var(--accent)}.setting-val.r{color:var(--danger)}
-
-/* Coming soon */
 .coming{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:40px;text-align:center}
 .coming svg{width:36px;height:36px;stroke:var(--dim2);fill:none;stroke-width:1.5;opacity:.4;margin-bottom:10px}
 .coming h3{font-size:13px;font-weight:500;color:var(--dim);font-family:'IBM Plex Mono',monospace}
-
 @media(max-width:900px){
   .layout{grid-template-columns:1fr}.sidebar{display:none}
   .sg1,.sg2{grid-template-columns:1fr 1fr}.pos-grid{grid-template-columns:1fr}
@@ -216,7 +193,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 </head>
 <body>
 <div class="layout">
-  <!-- Sidebar -->
   <div class="sidebar">
     <div class="brand">
       <div class="brand-icon"><svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
@@ -239,8 +215,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
     </nav>
     <div class="nav-ver"><span>Version 0.2.0</span><span class="live-badge" id="mode-badge">LIVE</span></div>
   </div>
-
-  <!-- Main -->
   <div class="main">
     <div class="topbar">
       <div>
@@ -254,36 +228,13 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
         <button class="tbtn tb-test">Test</button>
       </div>
     </div>
-
     <div class="content">
-      <!-- DASHBOARD -->
       <div class="page active" id="page-dashboard">
         <div class="sg1">
-          <div class="sc">
-            <div class="sc-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
-            <div class="sc-label">Toplam Portföy</div>
-            <div class="pv-wrap"><span class="pv-cash" id="p-cash">--</span><span class="pv-sep">/</span><span class="pv-eq" id="p-eq">--</span></div>
-            <div class="pd">Nakit: <b id="p-nakit">--</b> · Pozisyon: <b id="p-posval">--</b><br>Boşta: <span class="g" id="p-bosta">--</span><br>Anlık PnL: <span class="g" id="p-anlik">--</span></div>
-          </div>
-          <div class="sc">
-            <div class="sc-icon"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg></div>
-            <div class="sc-label">Günlük PnL</div>
-            <div class="sc-main g" id="s-dpnl">--</div>
-            <div class="sc-sub"><span class="g" id="s-dpct">--</span></div>
-            <div class="sc-sub">Gerçekleşmemiş dahil</div>
-          </div>
-          <div class="sc">
-            <div class="sc-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg></div>
-            <div class="sc-label">Win Rate</div>
-            <div class="sc-main" id="s-wr" style="color:var(--gold)">--</div>
-            <div class="sc-sub" id="s-trades">--</div>
-          </div>
-          <div class="sc">
-            <div class="sc-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
-            <div class="sc-label">Profit Factor</div>
-            <div class="sc-main" id="s-pf" style="color:var(--gold)">--</div>
-            <div class="sc-sub" id="s-open">-- Açık Pozisyon</div>
-          </div>
+          <div class="sc"><div class="sc-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div><div class="sc-label">Toplam Portföy</div><div class="pv-wrap"><span class="pv-cash" id="p-cash">--</span><span class="pv-sep">/</span><span class="pv-eq" id="p-eq">--</span></div><div class="pd">Nakit: <b id="p-nakit">--</b> · Pozisyon: <b id="p-posval">--</b><br>Boşta: <span class="g" id="p-bosta">--</span><br>Anlık PnL: <span class="g" id="p-anlik">--</span></div></div>
+          <div class="sc"><div class="sc-icon"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg></div><div class="sc-label">Günlük PnL</div><div class="sc-main g" id="s-dpnl">--</div><div class="sc-sub"><span class="g" id="s-dpct">--</span></div><div class="sc-sub">Gerçekleşmemiş dahil</div></div>
+          <div class="sc"><div class="sc-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg></div><div class="sc-label">Win Rate</div><div class="sc-main" id="s-wr" style="color:var(--gold)">--</div><div class="sc-sub" id="s-trades">--</div></div>
+          <div class="sc"><div class="sc-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><div class="sc-label">Profit Factor</div><div class="sc-main" id="s-pf" style="color:var(--gold)">--</div><div class="sc-sub" id="s-open">-- Açık Pozisyon</div></div>
         </div>
         <div class="sg2">
           <div class="s2"><div class="s2-icon" style="background:#00ffaa10"><svg style="stroke:var(--accent)" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div><div class="s2-label">Toplam PnL</div><div class="s2-val g" id="s-tpnl">--</div></div></div>
@@ -296,14 +247,12 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
         <div class="sec-hdr" style="margin-top:4px"><div class="sec-title">Açık Pozisyonlar</div><div class="sec-cnt" id="pos-cnt">0 Pozisyon</div></div>
         <div class="pos-grid" id="pos-grid"></div>
       </div>
-
-      <!-- SIGNAL INTELLIGENCE -->
       <div class="page" id="page-signal">
         <div class="sig-header">
           <div class="sig-stat"><div class="sig-stat-val" style="color:var(--gold)" id="si-regime">İZLE</div><div class="sig-stat-label">Piyasa Rejimi</div></div>
-          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--accent2)" id="si-shortlist">12</div><div class="sig-stat-label">Shortlist</div></div>
-          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--accent)" id="si-ready">6</div><div class="sig-stat-label">Hazır Sinyal</div></div>
-          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--gold)" id="si-approach">1</div><div class="sig-stat-label">Yaklaşıyor</div></div>
+          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--accent2)" id="si-shortlist">5</div><div class="sig-stat-label">Shortlist</div></div>
+          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--accent)" id="si-ready">0</div><div class="sig-stat-label">Hazır Sinyal</div></div>
+          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--gold)" id="si-approach">0</div><div class="sig-stat-label">Yaklaşıyor</div></div>
           <div class="sig-stat"><div class="sig-stat-val" style="color:var(--accent)" id="si-active">0</div><div class="sig-stat-label">Aktif İşlem</div></div>
           <div class="sig-stat"><div class="sig-stat-val" id="si-pnl" style="color:var(--danger)">$0.00</div><div class="sig-stat-label">Açık P&L</div></div>
         </div>
@@ -324,14 +273,10 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
           </div>
         </div>
       </div>
-
-      <!-- POSITIONS -->
       <div class="page" id="page-positions">
         <div class="sec-hdr"><div class="sec-title">Tüm Açık Pozisyonlar</div><div class="sec-cnt" id="pos-cnt2">0 Pozisyon</div></div>
         <div class="pos-grid" id="pos-grid2"></div>
       </div>
-
-      <!-- TRADE HISTORY -->
       <div class="page" id="page-history">
         <div class="th-tabs">
           <button class="th-tab active" onclick="setHistoryTab('all',this)">All</button>
@@ -343,8 +288,6 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
           <div id="th-rows"></div>
         </div>
       </div>
-
-      <!-- PERFORMANCE -->
       <div class="page" id="page-perf">
         <div class="perf-grid">
           <div class="perf-card"><div class="perf-title">Win Rate</div><div class="perf-val" id="pf-wr" style="color:var(--gold)">--</div><div class="perf-sub" id="pf-wr-sub">-- kazanan / -- kaybeden</div></div>
@@ -352,43 +295,24 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
           <div class="perf-card"><div class="perf-title">Toplam PnL</div><div class="perf-val" id="pf-pnl" style="color:var(--accent)">--</div><div class="perf-sub" id="pf-pnl-sub">-- işlem</div></div>
         </div>
         <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px;margin-bottom:12px">
-          <div class="perf-title" style="margin-bottom:12px">Strateji Bazlı Performans</div>
-          <div class="bar-row"><span class="bar-label">BTC/ETH</span><div class="bar-track"><div class="bar-fill" style="width:80%;background:var(--accent)"></div></div><span class="bar-val g">+$3.49</span></div>
-          <div class="bar-row"><span class="bar-label">SOL/AVAX</span><div class="bar-track"><div class="bar-fill" style="width:55%;background:var(--accent2)"></div></div><span class="bar-val g">+$1.20</span></div>
-          <div class="bar-row"><span class="bar-label">TRUMP</span><div class="bar-track"><div class="bar-fill" style="width:65%;background:var(--danger)"></div></div><span class="bar-val r">-$1.01</span></div>
-          <div class="bar-row"><span class="bar-label">Diğer</span><div class="bar-track"><div class="bar-fill" style="width:45%;background:var(--gold)"></div></div><span class="bar-val r">-$0.76</span></div>
+          <div class="perf-title" style="margin-bottom:12px">Coin Bazlı Performans</div>
+          <div id="perf-bars"></div>
         </div>
       </div>
-
-      <!-- STRATEGIES -->
-      <div class="page" id="page-strategies">
-        <div class="coming"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg><h3>Strategies — Yakında</h3></div>
-      </div>
-
-      <!-- BACKTEST -->
-      <div class="page" id="page-backtest">
-        <div class="coming"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/></svg><h3>Backtest — Yakında</h3></div>
-      </div>
-
-      <!-- SYSTEM LOGS -->
-      <div class="page" id="page-logs">
-        <div class="log-list" id="log-list"></div>
-      </div>
-
-      <!-- SETTINGS -->
+      <div class="page" id="page-strategies"><div class="coming"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/></svg><h3>Strategies — Yakında</h3></div></div>
+      <div class="page" id="page-backtest"><div class="coming"><svg viewBox="0 0 24 24"><polyline points="1 4 1 10 7 10"/></svg><h3>Backtest — Yakında</h3></div></div>
+      <div class="page" id="page-logs"><div class="log-list" id="log-list"></div></div>
       <div class="page" id="page-settings">
         <div class="settings-grid">
-          <div class="settings-card">
-            <div class="settings-title">Bot Ayarları</div>
+          <div class="settings-card"><div class="settings-title">Bot Ayarları</div>
             <div class="setting-row"><span class="setting-label">Borsa</span><span class="setting-val g">OKX</span></div>
             <div class="setting-row"><span class="setting-label">Mod</span><span class="setting-val" id="set-mode">--</span></div>
             <div class="setting-row"><span class="setting-label">Kaldıraç</span><span class="setting-val">10x</span></div>
-            <div class="setting-row"><span class="setting-label">Max Pozisyon</span><span class="setting-val">5</span></div>
-            <div class="setting-row"><span class="setting-label">Min Lot</span><span class="setting-val">$100 USDT</span></div>
-            <div class="setting-row"><span class="setting-label">Strateji</span><span class="setting-val g">Smart Scalping v2</span></div>
+            <div class="setting-row"><span class="setting-label">Max Pozisyon</span><span class="setting-val" id="set-maxpos">3</span></div>
+            <div class="setting-row"><span class="setting-label">Slot Notional</span><span class="setting-val" id="set-notional">$1000</span></div>
+            <div class="setting-row"><span class="setting-label">Strateji</span><span class="setting-val g">Pullback Long + Short v3</span></div>
           </div>
-          <div class="settings-card">
-            <div class="settings-title">Coin Listesi (İzin Verilenler)</div>
+          <div class="settings-card"><div class="settings-title">Coin Listesi</div>
             <div class="setting-row"><span class="setting-label">BTCUSDT</span><span class="setting-val g">✓ Aktif</span></div>
             <div class="setting-row"><span class="setting-label">ETHUSDT</span><span class="setting-val g">✓ Aktif</span></div>
             <div class="setting-row"><span class="setting-label">SOLUSDT</span><span class="setting-val g">✓ Aktif</span></div>
@@ -396,19 +320,16 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
             <div class="setting-row"><span class="setting-label">AVAXUSDT</span><span class="setting-val g">✓ Aktif</span></div>
             <div class="setting-row"><span class="setting-label">TRUMP/PUMP/WLF</span><span class="setting-val r">✗ Yasaklı</span></div>
           </div>
-          <div class="settings-card">
-            <div class="settings-title">Risk Parametreleri</div>
-            <div class="setting-row"><span class="setting-label">Stop Loss</span><span class="setting-val">%0.3 (ATR×1.2)</span></div>
-            <div class="setting-row"><span class="setting-label">TP1</span><span class="setting-val">%0.4 (%50 kapat)</span></div>
-            <div class="setting-row"><span class="setting-label">TP2</span><span class="setting-val">%0.6 (%50 kapat)</span></div>
-            <div class="setting-row"><span class="setting-label">Breakeven</span><span class="setting-val">%0.2</span></div>
-            <div class="setting-row"><span class="setting-label">Max Bar</span><span class="setting-val">10 bar (10 dk)</span></div>
-            <div class="setting-row"><span class="setting-label">Günlük Max Kayıp</span><span class="setting-val r">%4</span></div>
+          <div class="settings-card"><div class="settings-title">Risk Parametreleri</div>
+            <div class="setting-row"><span class="setting-label">Stop Loss</span><span class="setting-val">ATR × 1.2</span></div>
+            <div class="setting-row"><span class="setting-label">Take Profit</span><span class="setting-val">Risk × 1.8</span></div>
+            <div class="setting-row"><span class="setting-label">Min Puan</span><span class="setting-val">7 / 10</span></div>
+            <div class="setting-row"><span class="setting-label">Günlük Max Kayıp</span><span class="setting-val r">%6</span></div>
           </div>
-          <div class="settings-card">
-            <div class="settings-title">API Bağlantısı</div>
+          <div class="settings-card"><div class="settings-title">API Bağlantısı</div>
             <div class="setting-row"><span class="setting-label">OKX API</span><span class="setting-val g" id="set-auth">Kontrol ediliyor...</span></div>
             <div class="setting-row"><span class="setting-label">BTC Fiyatı</span><span class="setting-val" id="set-btc">--</span></div>
+            <div class="setting-row"><span class="setting-label">Loop Sayısı</span><span class="setting-val" id="set-loop">--</span></div>
             <div class="setting-row"><span class="setting-label">Son Güncelleme</span><span class="setting-val" id="set-upd">--</span></div>
           </div>
         </div>
@@ -416,92 +337,90 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
     </div>
   </div>
 </div>
-
 <script>
 const API = window.location.origin;
 const COINS = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','AVAXUSDT'];
 let es = null, botOn = false, engineOn = false, tick = 0;
-let _positions = [], _stats = {}, _trades = [];
+let _positions = [], _stats = {}, _trades = [], _signals = {};
 let _livePrices = {};
 
-// ── Navigation ────────────────────────────────────────────────────────────────
 const PAGE_TITLES = {dashboard:'Dashboard',signal:'Signal Intelligence',positions:'Positions',history:'Trade History',perf:'Performance',strategies:'Strategies',backtest:'Backtest',logs:'System Logs',settings:'Settings'};
 document.getElementById('nav').addEventListener('click', e => {
   const item = e.target.closest('.nav-item');
   if(!item) return;
   const page = item.dataset.page;
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   item.classList.add('active');
-  document.getElementById('page-title').textContent = PAGE_TITLES[page] || page;
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.getElementById('page-title').textContent = PAGE_TITLES[page]||page;
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
   document.getElementById('page-'+page).classList.add('active');
-  if(page === 'signal') renderSignalPage();
-  if(page === 'logs') renderLogs();
-  if(page === 'settings') renderSettings();
-  if(page === 'perf') renderPerf();
+  if(page==='signal') renderSignalPage();
+  if(page==='logs') renderLogs();
+  if(page==='settings') renderSettings();
+  if(page==='perf') renderPerf();
+  if(page==='history') loadHistory();
 });
 
-// ── Engine / Bot ──────────────────────────────────────────────────────────────
 function toggleEngine() {
   engineOn = !engineOn;
-  document.getElementById('eng-dot').className = 'eng-dot' + (engineOn?' on':'');
-  document.getElementById('eng-st').textContent = engineOn ? 'ACTIVE' : 'STANDBY';
-  document.getElementById('eng-st').style.color = engineOn ? 'var(--accent)' : 'var(--dim)';
-  const btn = document.getElementById('eng-btn');
-  btn.textContent = engineOn ? '⊙ Stop Engine' : '⊙ Start Engine';
-  btn.className = 'eng-btn ' + (engineOn ? 'eng-stop' : 'eng-start');
+  document.getElementById('eng-dot').className='eng-dot'+(engineOn?' on':'');
+  document.getElementById('eng-st').textContent=engineOn?'ACTIVE':'STANDBY';
+  document.getElementById('eng-st').style.color=engineOn?'var(--accent)':'var(--dim)';
+  const btn=document.getElementById('eng-btn');
+  btn.textContent=engineOn?'⊙ Stop Engine':'⊙ Start Engine';
+  btn.className='eng-btn '+(engineOn?'eng-stop':'eng-start');
   fetch(API+'/api/bot/'+(engineOn?'start':'stop'),{method:'POST'}).catch(()=>{});
 }
-function toggleBot() {
-  botOn = !botOn;
-  const btn = document.getElementById('bot-btn');
-  btn.textContent = botOn ? '● Bot Çalışıyor' : '● Bot Durduruldu';
-  btn.style.color = botOn ? 'var(--accent)' : 'var(--dim)';
+function toggleBot(){
+  botOn=!botOn;
+  const btn=document.getElementById('bot-btn');
+  btn.textContent=botOn?'● Bot Çalışıyor':'● Bot Durduruldu';
+  btn.style.color=botOn?'var(--accent)':'var(--dim)';
 }
 
-// ── Helpers ───────────────────────────────────────────────────────────────────
-const fd = (n,d=2) => (+(n??0)).toFixed(d);
-const fD = n => (n>=0?'+$':'-$')+Math.abs(+(n??0)).toFixed(2);
-const fP = n => (n>=0?'+':'')+fd(n)+'%';
-const fK = n => { const v=+(n??0); return(v>=0?'+$':'-$')+(Math.abs(v)>=1000?(Math.abs(v)/1000).toFixed(1)+'K':Math.abs(v).toFixed(2)); };
+const fd=(n,d=2)=>(+(n??0)).toFixed(d);
+const fD=n=>(n>=0?'+$':'-$')+Math.abs(+(n??0)).toFixed(2);
+const fP=n=>(n>=0?'+':'')+fd(n)+'%';
 
-// ── Render Stats ──────────────────────────────────────────────────────────────
 function renderStats(s, bot) {
   if(!s) return;
-  _stats = s;
-  const bal = +(s.totalBalance||0);
-  const unr = +(s.unrealizedPnl||0);
-  const avail = +(s.availableBalance||0);
-  document.getElementById('p-cash').textContent = '$'+avail.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  document.getElementById('p-eq').textContent = '$'+bal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
-  document.getElementById('p-nakit').textContent = '$'+avail.toFixed(2);
-  document.getElementById('p-posval').textContent = '$'+(bal-avail).toFixed(2);
-  document.getElementById('p-bosta').textContent = '$'+avail.toFixed(2);
-  const el = document.getElementById('p-anlik'); el.textContent = fD(unr); el.className = unr>=0?'g':'r';
-  const dp = document.getElementById('s-dpnl'); dp.textContent = fD(s.dailyPnl||0); dp.className = 'sc-main '+(+(s.dailyPnl||0)>=0?'g':'r');
-  document.getElementById('s-dpct').textContent = bal>0?fP((+(s.dailyPnl||0)/bal)*100):'--';
-  const wr = +(s.winRate||0);
-  document.getElementById('s-wr').textContent = fd(wr,1)+'%';
-  document.getElementById('s-wr').style.color = wr>=50?'var(--accent)':wr>=40?'var(--gold)':'var(--danger)';
-  document.getElementById('s-trades').textContent = (s.winningTrades||0)+' kazanan / '+(s.losingTrades||0)+' kaybeden — Toplam: '+(s.totalTrades||0);
-  const pf = +(s.profitFactor||0);
-  document.getElementById('s-pf').textContent = fd(pf)+'x';
-  document.getElementById('s-pf').style.color = pf>=1?'var(--accent)':pf>=0.8?'var(--gold)':'var(--danger)';
-  document.getElementById('s-open').textContent = (s.openPositions||0)+' Açık Pozisyon';
-  document.getElementById('s-tpnl').textContent = fD(s.totalPnl||0);
-  document.getElementById('s-unr').textContent = fD(unr)+' ('+fP(bal>0?(unr/bal)*100:0)+')';
-  if(bot) {
-    document.getElementById('mode-badge').textContent = (bot.mode||'paper').toUpperCase();
-    document.getElementById('mode-badge').style.color = bot.mode==='live'?'var(--danger)':'var(--gold)';
+  _stats=s;
+  const bal=+(s.totalBalance||0), unr=+(s.unrealizedPnl||0), avail=+(s.availableBalance||0);
+  document.getElementById('p-cash').textContent='$'+avail.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('p-eq').textContent='$'+bal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('p-nakit').textContent='$'+avail.toFixed(2);
+  document.getElementById('p-posval').textContent='$'+(bal-avail).toFixed(2);
+  document.getElementById('p-bosta').textContent='$'+avail.toFixed(2);
+  const el=document.getElementById('p-anlik'); el.textContent=fD(unr); el.className=unr>=0?'g':'r';
+  const dp=document.getElementById('s-dpnl'); dp.textContent=fD(s.dailyPnl||0); dp.className='sc-main '+(+(s.dailyPnl||0)>=0?'g':'r');
+  document.getElementById('s-dpct').textContent=bal>0?fP((+(s.dailyPnl||0)/bal)*100):'--';
+  const wr=+(s.winRate||0);
+  document.getElementById('s-wr').textContent=fd(wr,1)+'%';
+  document.getElementById('s-wr').style.color=wr>=50?'var(--accent)':wr>=40?'var(--gold)':'var(--danger)';
+  document.getElementById('s-trades').textContent=(s.winningTrades||0)+' kazanan / '+(s.losingTrades||0)+' kaybeden — Toplam: '+(s.totalTrades||0);
+  const pf=+(s.profitFactor||0);
+  document.getElementById('s-pf').textContent=fd(pf)+'x';
+  document.getElementById('s-pf').style.color=pf>=1?'var(--accent)':pf>=0.8?'var(--gold)':'var(--danger)';
+  document.getElementById('s-open').textContent=(s.openPositions||0)+' Açık Pozisyon';
+  document.getElementById('s-tpnl').textContent=fD(s.totalPnl||0);
+  document.getElementById('s-unr').textContent=fD(unr)+' ('+fP(bal>0?(unr/bal)*100:0)+')';
+  if(bot){
+    document.getElementById('mode-badge').textContent=(bot.mode||'paper').toUpperCase();
+    document.getElementById('mode-badge').style.color=bot.mode==='live'?'var(--danger)':'var(--gold)';
+    if(bot.running){
+      document.getElementById('eng-dot').className='eng-dot on';
+      document.getElementById('eng-st').textContent='ACTIVE';
+      document.getElementById('eng-st').style.color='var(--accent)';
+    }
+    if(bot.signals) _signals=bot.signals;
   }
 }
 
-// ── Render Positions ──────────────────────────────────────────────────────────
 function renderPositions(positions, gridId, cntId) {
-  _positions = positions || [];
-  const grid = document.getElementById(gridId);
-  const cnt  = document.getElementById(cntId);
-  if(!positions||!positions.length) {
+  _positions=positions||[];
+  const grid=document.getElementById(gridId);
+  const cnt=document.getElementById(cntId);
+  if(!positions||!positions.length){
     grid.innerHTML='<div class="empty-box" style="grid-column:1/-1"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><div class="empty-txt">Açık pozisyon yok</div></div>';
     if(cnt) cnt.textContent='0 Pozisyon';
     return;
@@ -519,10 +438,9 @@ function renderPositions(positions, gridId, cntId) {
           <div class="pc-tags">
             <span class="ptag ${il?'pt-long':'pt-short'}">${(p.side||'').toUpperCase()}</span>
             <span class="ptag pt-lev">${p.leverage||10}×</span>
-            ${p.lot_type==='large'?'<span class="ptag pt-large">LARGE LOT</span>':''}
             ${isManual?'<span class="ptag pt-manual">MANUEL</span>':''}
             <span class="ptag pt-notional">$${notional.toLocaleString(undefined,{maximumFractionDigits:0})} notional</span>
-            <span class="ptag pt-tp">TP 4.0%</span>
+            ${p.stop_loss?'<span class="ptag pt-tp">SL $'+p.stop_loss.toFixed(2)+'</span>':''}
           </div>
           <div class="pc-sym">${sym}USDT</div>
         </div>
@@ -535,88 +453,85 @@ function renderPositions(positions, gridId, cntId) {
       <div class="pc-details">
         <div class="pd-item"><div class="pd-label">Giriş</div><div class="pd-val">$${(+(p.entry_price||0)).toLocaleString()}</div></div>
         <div class="pd-item"><div class="pd-label">Güncel</div><div class="pd-val" style="color:${il?'var(--accent)':'var(--danger)'}">$${(+(p.current_price||0)).toLocaleString()}</div></div>
-        <div class="pd-item"><div class="pd-label">Yatırılan</div><div class="pd-val" style="color:var(--gold)">$${((+(p.quantity||0))*(+(p.entry_price||0))).toFixed(2)}</div></div>
+        <div class="pd-item"><div class="pd-label">Yatırılan</div><div class="pd-val" style="color:var(--gold)">$${((+(p.quantity||0))*(+(p.entry_price||0))/(p.leverage||10)).toFixed(2)}</div></div>
         <div class="pd-item"><div class="pd-label">Notional</div><div class="pd-val">$${notional.toLocaleString(undefined,{maximumFractionDigits:0})}</div></div>
       </div>
-      <div style="font-size:10px;color:var(--dim);font-family:'IBM Plex Mono',monospace">${p.strategy_name||'Smart Scalping v2'}</div>
+      <div style="font-size:10px;color:var(--dim);font-family:'IBM Plex Mono',monospace">${p.strategy_name||'Pullback Long v3'}</div>
     </div>`;
   }).join('');
 }
 
-// ── Signal Intelligence Page ──────────────────────────────────────────────────
-const SIG_COINS = [
-  {sym:'BTCUSDT',score:8,status:'reject',reason:'Kill switch aktif',strat:'PLLBK',ready:85},
-  {sym:'ETHUSDT',score:8,status:'reject',reason:'Kill switch aktif',strat:'PLLBK',ready:85},
-  {sym:'SOLUSDT',score:7,status:'watch',reason:'Sinyal yok',strat:'MOMEN',ready:70},
-  {sym:'BNBUSDT',score:6,status:'watch',reason:'Sinyal yok',strat:'MOMEN',ready:60},
-  {sym:'AVAXUSDT',score:5,status:'watch',reason:'Sinyal yok',strat:'PLLBK',ready:50},
-];
-
 function renderSignalPage() {
-  // Signal rows
+  const sigs = _signals;
+  const coins = Object.keys(sigs).length > 0 ? Object.keys(sigs) : COINS.map(c=>c);
+  document.getElementById('si-coin-count').textContent = coins.length + ' coin izleniyor';
+
+  let readyCount=0, approachCount=0;
   const rows = document.getElementById('sig-rows');
-  rows.innerHTML = SIG_COINS.map(c => {
-    const color = c.score>=8?'var(--accent)':c.score>=6?'var(--gold)':'var(--danger)';
-    const stcls = c.strat==='PLLBK'?'strat-plbk':'strat-mom';
-    const stcls2 = c.status==='active'?'st-active':c.status==='watch'?'st-watch':c.status==='approach'?'st-approach':'st-reject';
-    const stlbl = c.status==='active'?'AKTİF':c.status==='watch'?'İZLEME':c.status==='approach'?'YAKLAŞIYOR':'REDDEDİLDİ';
-    const sym = c.sym.replace('USDT','');
-    const lp = _livePrices[c.sym] || 0;
+  rows.innerHTML = coins.map(sym => {
+    const sig = sigs[sym] || {};
+    const longScore = sig.long?.score || 0;
+    const shortScore = sig.short?.score || 0;
+    const bestScore = Math.max(longScore, shortScore);
+    const isLong = sig.long?.enter;
+    const isShort = sig.short?.enter;
+    const inPos = sig.in_position;
+    let status, stlbl, stcls;
+    if(inPos){ status='active'; stlbl='AKTİF'; stcls='st-active'; }
+    else if(isLong||isShort){ status='active'; stlbl='SİNYAL'; stcls='st-active'; readyCount++; }
+    else if(bestScore>=6){ status='approach'; stlbl='YAKLAŞIYOR'; stcls='st-approach'; approachCount++; }
+    else{ status='watch'; stlbl='İZLEME'; stcls='st-watch'; }
+    const color=bestScore>=8?'var(--accent)':bestScore>=6?'var(--gold)':'var(--danger)';
+    const strat = isLong?'LONG':isShort?'SHORT':'PLLBK';
+    const stratCls = isShort?'strat-mom':'strat-plbk';
+    const lp = _livePrices[sym] || 0;
     return`<div class="sig-row">
-      <div class="sig-sym"><span class="sig-dot" style="background:${c.score>=8?'var(--accent)':'var(--dim)'}"></span>${sym}<small style="color:var(--dim);font-size:9px;margin-left:2px">${lp>0?'$'+lp.toLocaleString():''}</small></div>
-      <div><span class="sig-strat ${stcls}">${c.strat}</span></div>
-      <div class="sig-score-wrap"><span class="sig-score-num" style="color:${color}">${c.score}</span><div class="sig-score-bar"><div class="sig-score-fill" style="width:${c.score*10}%;background:${color}"></div></div><span style="color:var(--dim);font-size:9px;font-family:'IBM Plex Mono',monospace">/10</span></div>
-      <div><span class="sig-status ${stcls2}">${stlbl}</span></div>
-      <div class="sig-ready-bar"><div class="ready-fill" style="background:${c.ready>=80?'var(--accent)':c.ready>=60?'var(--gold)':'var(--danger)'};width:${c.ready}%"></div><span style="font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace">%${c.ready}</span></div>
-      <div style="font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace">${c.reason}</div>
+      <div class="sig-sym"><span class="sig-dot" style="background:${bestScore>=7?'var(--accent)':'var(--dim)'}"></span>${sym.replace('USDT','')}<small style="color:var(--dim);font-size:9px;margin-left:2px">${lp>0?'$'+lp.toLocaleString():''}</small></div>
+      <div><span class="sig-strat ${stratCls}">${strat}</span></div>
+      <div class="sig-score-wrap"><span class="sig-score-num" style="color:${color}">${bestScore}</span><div class="sig-score-bar"><div class="sig-score-fill" style="width:${bestScore*10}%;background:${color}"></div></div><span style="color:var(--dim);font-size:9px;font-family:'IBM Plex Mono',monospace">/10</span></div>
+      <div><span class="sig-status ${stcls}">${stlbl}</span></div>
+      <div class="sig-ready-bar"><div class="ready-fill" style="background:${bestScore>=7?'var(--accent)':bestScore>=5?'var(--gold)':'var(--danger)'};width:${bestScore*10}%"></div><span style="font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace">%${bestScore*10}</span></div>
+      <div style="font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace">${isLong?'L:'+sig.long?.score:isShort?'S:'+sig.short?.score:'L:'+longScore+' S:'+shortScore}</div>
     </div>`;
   }).join('');
-
-  // Detail panel
-  const detail = document.getElementById('sdp-coins');
-  const inds = document.getElementById('sdp-indicators');
-  detail.innerHTML = [
-    {sym:'TRUMP',score:10,color:'var(--accent)'},{sym:'BTC',score:8,color:'var(--accent)'},{sym:'ETH',score:8,color:'var(--accent)'},
-    {sym:'SUI',score:6,color:'var(--gold)'},{sym:'HYPE',score:6,color:'var(--gold)'},{sym:'PEPE',score:5,color:'var(--danger)'},{sym:'TRX',score:5,color:'var(--danger)'}
-  ].map(c=>`<div class="sdp-coin"><span class="sdp-coin-sym">● ${c.sym}</span><span class="sdp-coin-score" style="color:${c.color}">${c.score}<small style="color:var(--dim);font-size:9px">/6</small></span></div>`).join('');
-
-  inds.innerHTML = [
-    {name:'Trend Hizası',val:'EMA9>EMA21>EMA50',ok:true},{name:'PB Zonu',val:'Yakın değil',ok:false},
-    {name:'Momentum',val:'RSI: 52.3 · ADX: 18.2',ok:true},{name:'Hacim Onayı',val:'Vol/Ort: x0.9',ok:false},
-  ].map(i=>`<div class="sdp-ind-row"><span class="sdp-ind-name">${i.name}</span><span class="sdp-ind-val" style="color:${i.ok?'var(--accent)':'var(--danger)'}">${i.ok?'✓':''} ${i.val}</span></div>`).join('');
-
+  document.getElementById('si-ready').textContent = readyCount;
+  document.getElementById('si-approach').textContent = approachCount;
   document.getElementById('si-active').textContent = _positions.filter(p=>!p.is_adopted).length;
-  const openPnl = _positions.reduce((a,p)=>a+p.pnl,0);
+  document.getElementById('si-shortlist').textContent = coins.length;
+  const openPnl = _positions.reduce((a,p)=>a+(+(p.pnl||0)),0);
   const pnlEl = document.getElementById('si-pnl');
   pnlEl.textContent = fD(openPnl);
   pnlEl.style.color = openPnl>=0?'var(--accent)':'var(--danger)';
 }
 
-// ── Trade History ─────────────────────────────────────────────────────────────
-const DEMO_TRADES = [
-  {date:'Apr 09, 19:41',sym:'WLFIUSDT',side:'buy',entry:0.0930,exit:0.0936,strat:'Pullback Short',pnl:-0.30,pnlP:-6.42},
-  {date:'Apr 09, 16:32',sym:'WLFIUSDT',side:'buy',entry:0.0936,exit:0.0941,strat:'Pullback Short',pnl:-1.05,pnlP:-0.85},
-  {date:'Apr 09, 09:01',sym:'XPLUSDT', side:'buy',entry:0.1212,exit:0.1203,strat:'Pullback Short',pnl:+0.12,pnlP:+0.49},
-  {date:'Apr 08, 05:35',sym:'FILUSDT', side:'buy',entry:0.8974,exit:0.9003,strat:'Pullback Long', pnl:+0.08,pnlP:+0.07},
-  {date:'Apr 08, 00:24',sym:'ETHUSDT', side:'buy',entry:2134.32,exit:2144.28,strat:'Pullback Long',pnl:+0.46,pnlP:+0.22},
-  {date:'Apr 07, 23:41',sym:'BTCUSDT', side:'buy',entry:69287.33,exit:70068.20,strat:'Pullback Long',pnl:+3.03,pnlP:+0.88},
-  {date:'Apr 07, 23:41',sym:'LINKUSDT',side:'buy',entry:8.73,exit:8.78,strat:'Pullback Short',pnl:-0.83,pnlP:-0.87},
-];
+async function loadHistory() {
+  try {
+    const r = await fetch(API+'/api/trades');
+    const trades = await r.json();
+    _trades = trades;
+    renderHistoryRows(trades, 'all');
+  } catch { renderHistoryRows([], 'all'); }
+}
 
-function renderHistory(filter) {
+function renderHistoryRows(trades, filter) {
   const rows = document.getElementById('th-rows');
-  const list = filter==='all' ? DEMO_TRADES : DEMO_TRADES.filter(t => filter==='live');
-  if(!list.length) { rows.innerHTML='<div style="text-align:center;padding:24px;color:var(--dim);font-family:IBM Plex Mono,monospace;font-size:11px">İşlem yok</div>'; return; }
+  const list = filter==='all' ? trades : trades.filter(t=>t.mode===filter);
+  if(!list.length){
+    rows.innerHTML='<div style="text-align:center;padding:24px;color:var(--dim);font-family:IBM Plex Mono,monospace;font-size:11px">İşlem yok</div>';
+    return;
+  }
   rows.innerHTML = list.map(t=>{
-    const sym = t.sym.replace('USDT','');
-    const win = t.pnl >= 0;
+    const sym = (t.symbol||'').replace('USDT','');
+    const win = (+(t.pnl||0)) >= 0;
+    const date = t.opened_at ? new Date(t.opened_at).toLocaleString('tr-TR',{month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '--';
+    const exitPrice = t.exit_price ? '$'+(+(t.exit_price)).toLocaleString() : '--';
     return`<div class="th-row">
-      <div class="th-date"><b>${t.date.split(',')[0]}</b>${t.date.split(',')[1]||''}</div>
-      <div class="th-sym"><span class="th-side ${t.side==='buy'?'side-buy':'side-sell'}">${t.side.toUpperCase()}</span>${sym}USDT</div>
-      <div class="th-entry"><b>$${t.entry.toLocaleString()}</b><span>→ $${t.exit.toLocaleString()}</span></div>
-      <div class="th-strat">${t.strat}</div>
-      <div><span class="th-status">CLOSED</span></div>
-      <div class="th-pnl" style="color:${win?'var(--accent)':'var(--danger)'}">${fD(t.pnl)}<br><small style="font-size:9px">${fP(t.pnlP)}</small></div>
+      <div class="th-date"><b>${date.split(',')[0]||date}</b>${date.split(',')[1]||''}</div>
+      <div class="th-sym"><span class="th-side ${t.side==='long'?'side-buy':'side-sell'}">${(t.side||'buy').toUpperCase()}</span>${sym}USDT</div>
+      <div class="th-entry"><b>$${(+(t.entry_price||0)).toLocaleString()}</b><span>→ ${exitPrice}</span></div>
+      <div class="th-strat">${t.strategy||'Pullback Long'}</div>
+      <div><span class="th-status">${(t.status||'open').toUpperCase()}</span></div>
+      <div class="th-pnl" style="color:${win?'var(--accent)':'var(--danger)'}">${fD(t.pnl||0)}<br><small style="font-size:9px">${fP(t.pnl_pct||0)}</small></div>
     </div>`;
   }).join('');
 }
@@ -624,101 +539,98 @@ function renderHistory(filter) {
 function setHistoryTab(filter, btn) {
   document.querySelectorAll('.th-tab').forEach(t=>t.classList.remove('active'));
   btn.classList.add('active');
-  renderHistory(filter);
+  renderHistoryRows(_trades, filter);
 }
 
-// ── Performance ───────────────────────────────────────────────────────────────
 function renderPerf() {
-  const s = _stats;
-  document.getElementById('pf-wr').textContent = fd(s.winRate||0,1)+'%';
-  document.getElementById('pf-wr-sub').textContent = (s.winningTrades||0)+' kazanan / '+(s.losingTrades||0)+' kaybeden';
-  document.getElementById('pf-pf').textContent = fd(s.profitFactor||0)+'x';
-  document.getElementById('pf-pnl').textContent = fD(s.totalPnl||0);
-  document.getElementById('pf-pnl-sub').textContent = (s.totalTrades||0)+' işlem';
+  const s=_stats;
+  document.getElementById('pf-wr').textContent=fd(s.winRate||0,1)+'%';
+  document.getElementById('pf-wr-sub').textContent=(s.winningTrades||0)+' kazanan / '+(s.losingTrades||0)+' kaybeden';
+  document.getElementById('pf-pf').textContent=fd(s.profitFactor||0)+'x';
+  document.getElementById('pf-pnl').textContent=fD(s.totalPnl||0);
+  document.getElementById('pf-pnl-sub').textContent=(s.totalTrades||0)+' işlem';
 }
 
-// ── System Logs ───────────────────────────────────────────────────────────────
-const LOGS = [
-  {t:'04:29:28',lvl:'info',msg:'CryptoBot başlatıldı → Railway port 8080'},
-  {t:'04:29:30',lvl:'info',msg:'OKX API bağlantısı kuruldu — authenticated: true'},
-  {t:'04:29:35',lvl:'info',msg:'Smart Scalping v2 stratejisi aktif'},
-  {t:'04:30:00',lvl:'info',msg:'Pozisyon taraması başladı — 5 coin izleniyor'},
-  {t:'04:31:08',lvl:'warn',msg:'BTC sinyali reddedildi — Kill switch aktif'},
-  {t:'04:32:15',lvl:'info',msg:'PUMPUSDT — Manuel pozisyon tespit edildi, dokunulmadı'},
-  {t:'04:35:00',lvl:'info',msg:'OKX pozisyon sync tamamlandı — 1 açık pozisyon'},
-];
 function renderLogs() {
-  document.getElementById('log-list').innerHTML = LOGS.map(l=>`<div class="log-row"><span class="log-time">${l.t}</span><span class="log-level ${l.lvl}">${l.lvl.toUpperCase()}</span><span class="log-msg">${l.msg}</span></div>`).join('');
+  fetch(API+'/api/logs').then(r=>r.json()).then(logs=>{
+    document.getElementById('log-list').innerHTML=logs.map(l=>{
+      const parts=l.match(/^\[(\d+:\d+:\d+)\] (.+)$/);
+      const t=parts?parts[1]:'--', msg=parts?parts[2]:l;
+      const lvl=msg.includes('hata')||msg.includes('BAŞARISIZ')||msg.includes('❌')?'err':msg.includes('⚠')||msg.includes('KAPAT')?'warn':'info';
+      return`<div class="log-row"><span class="log-time">${t}</span><span class="log-level ${lvl}">${lvl.toUpperCase()}</span><span class="log-msg">${msg}</span></div>`;
+    }).join('');
+  }).catch(()=>{});
 }
 
-// ── Settings ──────────────────────────────────────────────────────────────────
 function renderSettings() {
   fetch(API+'/api/settings').then(r=>r.json()).then(d=>{
-    document.getElementById('set-mode').textContent = (d.trading_mode||'--').toUpperCase();
-    document.getElementById('set-mode').className = 'setting-val '+(d.trading_mode==='live'?'r':'g');
-    document.getElementById('set-auth').textContent = d.authenticated ? '✓ Bağlı' : '✗ Bağlı değil';
-    document.getElementById('set-auth').className = 'setting-val '+(d.authenticated?'g':'r');
+    document.getElementById('set-mode').textContent=(d.trading_mode||'--').toUpperCase();
+    document.getElementById('set-mode').className='setting-val '+(d.trading_mode==='live'?'r':'g');
+    document.getElementById('set-auth').textContent=d.authenticated?'✓ Bağlı':'✗ Bağlı değil';
+    document.getElementById('set-auth').className='setting-val '+(d.authenticated?'g':'r');
+    document.getElementById('set-maxpos').textContent=d.max_positions||3;
+    document.getElementById('set-notional').textContent='$'+(d.slot_notional||1000);
   }).catch(()=>{});
   fetch(API+'/api/health').then(r=>r.json()).then(d=>{
-    const btc = d.btc_price;
-    document.getElementById('set-btc').textContent = btc>0 ? '$'+btc.toLocaleString() : 'Alınamadı';
-    document.getElementById('set-upd').textContent = new Date().toLocaleTimeString('tr-TR');
+    document.getElementById('set-btc').textContent=d.btc_price>0?'$'+d.btc_price.toLocaleString():'--';
+    document.getElementById('set-loop').textContent=d.loop_count||'--';
+    document.getElementById('set-upd').textContent=new Date().toLocaleTimeString('tr-TR');
   }).catch(()=>{});
 }
 
-// ── Client-side live prices ───────────────────────────────────────────────────
 async function fetchLivePrices() {
-  for(const sym of COINS) {
-    const inst = sym.replace('USDT','-USDT');
-    try {
-      const r = await fetch(`https://www.okx.com/api/v5/market/ticker?instId=${inst}`);
-      const d = await r.json();
-      const p = parseFloat(d?.data?.[0]?.last||0);
+  for(const sym of COINS){
+    const inst=sym.replace('USDT','-USDT');
+    try{
+      const r=await fetch(`https://www.okx.com/api/v5/market/ticker?instId=${inst}`);
+      const d=await r.json();
+      const p=parseFloat(d?.data?.[0]?.last||0);
       if(p>0) _livePrices[sym]=p;
-    } catch {}
+    }catch{}
   }
 }
 fetchLivePrices();
-setInterval(fetchLivePrices, 5000);
+setInterval(fetchLivePrices,5000);
 
-// ── SSE ───────────────────────────────────────────────────────────────────────
 function connect() {
   if(es){es.close();es=null;}
-  es = new EventSource(API+'/api/stream');
-  es.onmessage = e => {
-    try {
-      const d = JSON.parse(e.data);
+  es=new EventSource(API+'/api/stream');
+  es.onmessage=e=>{
+    try{
+      const d=JSON.parse(e.data);
       renderStats(d.stats, d.botStatus);
-      // Pozisyonlara live fiyat ekle
-      const positions = (d.positions||[]).map(p => {
-        const lp = _livePrices[p.symbol];
-        if(lp && lp>0 && !p.is_adopted) {
-          const pnl = p.side==='long'?(lp-p.entry_price)*p.quantity*p.leverage:(p.entry_price-lp)*p.quantity*p.leverage;
-          return {...p, current_price:lp, pnl:Math.round(pnl*100)/100, pnl_percent:Math.round(pnl/(p.entry_price*p.quantity)*10000)/100};
+      // PnL hesabı: OKX'ten gelen pnl ve pnl_percent direkt kullan (mock_api zaten düzeltti)
+      const positions=(d.positions||[]).map(p=>{
+        const lp=_livePrices[p.symbol];
+        if(lp&&lp>0&&!p.is_adopted){
+          // Gerçek coin miktarı = notional / entry_price
+          const coinQty = (+(p.notional||0)) / (+(p.entry_price||1));
+          const margin  = (+(p.notional||0)) / (+(p.leverage||10));
+          const pnl     = p.side==='long'?(lp-(+(p.entry_price||0)))*coinQty:((+(p.entry_price||0))-lp)*coinQty;
+          const pnlP    = margin>0?Math.round(pnl/margin*10000)/100:0;
+          return{...p,current_price:lp,pnl:Math.round(pnl*100)/100,pnl_percent:pnlP};
         }
         return p;
       });
-      renderPositions(positions, 'pos-grid', 'pos-cnt');
-      renderPositions(positions, 'pos-grid2', 'pos-cnt2');
+      renderPositions(positions,'pos-grid','pos-cnt');
+      renderPositions(positions,'pos-grid2','pos-cnt2');
       tick++;
-      document.getElementById('last-upd').textContent = '·0s önce';
-      // Aktif sayfa refresh
-      const activePage = document.querySelector('.page.active');
+      document.getElementById('last-upd').textContent='·0s önce';
+      const activePage=document.querySelector('.page.active');
       if(activePage?.id==='page-signal') renderSignalPage();
-    } catch {}
+      if(activePage?.id==='page-logs') renderLogs();
+    }catch{}
   };
-  es.onerror = () => { es.close(); setTimeout(connect,5000); };
+  es.onerror=()=>{es.close();setTimeout(connect,5000);};
 }
 
-// Timer
 setInterval(()=>{
   const el=document.getElementById('last-upd');
   const m=el.textContent.match(/·(\d+)/);
   if(m) el.textContent='·'+(+m[1]+1)+'s önce';
 },1000);
 
-// Init
-renderHistory('all');
+loadHistory();
 renderLogs();
 connect();
 </script>
