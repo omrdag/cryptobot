@@ -348,6 +348,7 @@ def close_position(inst_id: str, side: str, qty: float):
 def run_signals(positions: list) -> dict:
     """
     Tüm coinleri tara, sinyal üret.
+    MTF: 1dk (ana) + 5dk (trend onayı) + 15dk (ana trend)
     Döndürür: {symbol: signal_info}
     """
     from pullback_long  import PullbackLongStrategy
@@ -361,16 +362,25 @@ def run_signals(positions: list) -> dict:
 
     for inst_id in COINS:
         sym = COIN_MAP[inst_id]
-        df  = fetch_ohlcv(inst_id, bar="1m", limit=100)
+
+        # Ana timeframe: 1dk
+        df = fetch_ohlcv(inst_id, bar="1m", limit=100)
         if df is None or len(df) < 55:
-            _log(f"{sym}: yetersiz veri ({len(df) if df is not None else 0} bar)")
+            _log(f"{sym}: yetersiz 1dk veri ({len(df) if df is not None else 0} bar)")
             continue
+
+        # MTF: 5dk ve 15dk
+        df_5m  = fetch_ohlcv(inst_id, bar="5m",  limit=80)
+        df_15m = fetch_ohlcv(inst_id, bar="15m", limit=80)
 
         hour_utc = datetime.now(timezone.utc).hour
 
-        # Long sinyal
-        long_res = long_strat.generate(df, symbol=sym, hour_utc=hour_utc)
-        # Short sinyal (yalnızca düşüş rejiminde — basit kontrol)
+        # Long sinyal (MTF ile)
+        long_res = long_strat.generate(
+            df, symbol=sym, hour_utc=hour_utc,
+            df_5m=df_5m, df_15m=df_15m
+        )
+        # Short sinyal
         short_res = short_strat.generate(df, symbol=sym, hour_utc=hour_utc)
 
         signals[sym] = {
@@ -387,7 +397,7 @@ def run_signals(positions: list) -> dict:
 
         status = ""
         if long_res.should_enter:
-            status = f"BUY ({long_res.score}/10)"
+            status = f"BUY ({long_res.score}/11)"
         elif short_res.should_enter:
             status = f"SHORT ({short_res.score}/10)"
         else:
