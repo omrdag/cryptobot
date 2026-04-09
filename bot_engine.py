@@ -445,6 +445,206 @@ def check_exits(positions: list, signals: dict):
 
 # ── Ana Döngü ─────────────────────────────────────────────────────────────────
 
+# ── Funding Rate Arbitrage ────────────────────────────────────────────────────
+# Sadece BTC ve ETH — en likit, en düşük spread
+FUNDING_COINS   = ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+FUNDING_NOTIONAL = float(os.getenv("FUNDING_NOTIONAL", "1000"))  # USDT
+
+# Eşikler
+FUNDING_ENTRY_THRESHOLD  = float(os.getenv("FUNDING_ENTRY_PCT", "0.03"))   # %0.03 — giriş eşiği
+FUNDING_EXIT_THRESHOLD   = float(os.getenv("FUNDING_EXIT_PCT",  "0.01"))   # %0.01 — çıkış eşiği (nötrleşince kapat)
+FUNDING_MAX_SL_PCT        = 0.005   # %0.5 — maks zarar (dar SL)
+FUNDING_LEVERAGE          = 3       # 3x — düşük kaldıraç (yön riski minimize)
+
+# Aktif funding pozisyonları: {sym → {"side", "entry", "sl", "funding_rate", "opened_at"}}
+_funding_positions: Dict[str, dict] = {}
+
+
+def get_funding_rate(inst_id: str) -> float:
+    """OKX'ten anlık funding rate al (kesir olarak, ör. 0.0003 = %0.03)."""
+    try:
+        data = _okx_get(f"/api/v5/public/funding-rate?instId={inst_id}")
+        rate = float(data.get("data", [{}])[0].get("fundingRate", 0) or 0)
+        return rate
+    except Exception as e:
+        _log(f"[FUNDING] {inst_id} rate alınamadı: {e}", "warning")
+        return 0.0
+
+
+def get_next_funding_time(inst_id: str) -> Optional[int]:
+    """Bir sonraki funding zamanını ms olarak döndür."""
+    try:
+        data = _okx_get(f"/api/v5/public/funding-rate?instId={inst_id}")
+        ts = int(data.get("data", [{}])[0].get("nextFundingTime", 0) or 0)
+        return ts
+    except:
+        return None
+
+
+def run_funding_arbitrage(open_positions: list, db=None, trade_ids: dict = None) -> None:
+    """
+    Funding rate arbitrage döngüsü.
+
+    Strateji:
+      - Funding rate > +%0.03 → SHORT aç (long'lar sana ödüyor)
+      - Funding rate < -%0.03 → LONG aç (short'lar sana ödüyor)
+      - Rate nötre döndüğünde (< %0.01) → pozisyonu kapat
+      - SL: %0.5 — küçük zarar kabul et, funding geliri koru
+
+    NOT: Funding her 8 saatte bir ödeniyor. Pozisyon funding anına kadar
+    tutulur, sonra kapatılır. Günde 0-3 işlem beklenir.
+    """
+    if not OKX_KEY and not PAPER_TRADING:
+        return
+
+    open_syms = {p["instId"] for p in open_positions}
+
+    for inst_id in FUNDING_COINS:
+        sym = COIN_MAP.get(inst_id, inst_id)
+
+        # 1. Funding rate kontrolü
+        rate = get_funding_rate(inst_id)
+        rate_pct = rate * 100
+        next_ts  = get_next_funding_time(inst_id)
+        mins_to_funding = ((next_ts - int(time.time() * 1000)) / 60000) if next_ts else 999
+
+        # 2. Mevcut funding pozisyonu var mı?
+        fp = _funding_positions.get(sym)
+
+        if fp:
+            # Çıkış koşulları kontrolü
+            should_exit = False
+            exit_reason = ""
+
+            # a. Rate nötrleşti → kapat
+            if abs(rate) < FUNDING_EXIT_THRESHOLD / 100:
+                should_exit  = True
+                exit_reason  = f"Rate nötrleşti (%{rate_pct:.4f})"
+
+            # b. Rate yön değiştirdi → kapat
+            if fp["side"] == "short" and rate < 0:
+                should_exit  = True
+                exit_reason  = f"Rate negatife döndü → short dezavantajlı"
+            elif fp["side"] == "long" and rate > 0:
+                should_exit  = True
+                exit_reason  = f"Rate pozitife döndü → long dezavantajlı"
+
+            if should_exit:
+                _log(f"[FUNDING] {sym} kapat — {exit_reason}")
+                close_side = "sell" if fp["side"] == "long" else "buy"
+                # Canlı modda OKX'e kapatma emri
+                if not PAPER_TRADING:
+                    close_position(inst_id, fp["side"], fp.get("qty", 0))
+                else:
+                    _log(f"[PAPER FUNDING] {sym} {fp['side']} kapat")
+                _funding_positions.pop(sym, None)
+                # DB güncelle
+                if db and trade_ids and sym in trade_ids:
+                    try:
+                        entry_p = fp["entry"]
+                        cur_p   = fp.get("current_price", entry_p)
+                        pnl     = (cur_p - entry_p) if fp["side"] == "long" else (entry_p - cur_p)
+                        pnl    *= fp.get("qty", FUNDING_NOTIONAL / entry_p if entry_p > 0 else 0)
+                        db.close_trade(trade_ids.pop(sym, None), sym, cur_p, pnl, 0.0, exit_reason)
+                    except Exception as _de:
+                        _log(f"[FUNDING] DB kapanış hatası: {_de}", "warning")
+            continue  # Bu sembol için açılış kısmına geçme
+
+        # 3. Yeni pozisyon açma koşulları
+        # Funding zaten çok yakınsa girme (5 dakika içindeyse geç)
+        if mins_to_funding < 5:
+            _log(f"[FUNDING] {sym} funding {mins_to_funding:.0f}dk içinde — giriş atlandı (çok geç)")
+            continue
+
+        # Funding coin zaten başka pozisyonda mı?
+        if inst_id in open_syms:
+            _log(f"[FUNDING] {sym} zaten pozisyonda — funding arb atlandı")
+            continue
+
+        # Eşik kontrolü
+        if abs(rate) < FUNDING_ENTRY_THRESHOLD / 100:
+            _log(f"[FUNDING] {sym} rate=%{rate_pct:.4f} — eşik altında (min=%{FUNDING_ENTRY_THRESHOLD:.2f})")
+            continue
+
+        # Yön belirle
+        if rate > 0:
+            arb_side = "sell"   # SHORT — long'lar sana ödüyor
+            arb_pos  = "short"
+        else:
+            arb_side = "buy"    # LONG — short'lar sana ödüyor
+            arb_pos  = "long"
+
+        # Anlık fiyat
+        price_data = _okx_get(f"/api/v5/market/ticker?instId={inst_id}")
+        try:
+            price = float(price_data["data"][0]["last"])
+        except:
+            _log(f"[FUNDING] {sym} fiyat alınamadı", "warning")
+            continue
+
+        # SL hesapla — dar (%0.5)
+        sl = price * (1 - FUNDING_MAX_SL_PCT) if arb_pos == "long" else price * (1 + FUNDING_MAX_SL_PCT)
+
+        # Beklenen kazanç = notional × rate
+        expected_gain = FUNDING_NOTIONAL * abs(rate)
+        expected_gain_usdt = round(expected_gain, 4)
+
+        _log(
+            f"[FUNDING ARB] {sym} {arb_pos.upper()} | "
+            f"Rate=%{rate_pct:.4f} | "
+            f"Beklenen kazanç=${expected_gain_usdt:.4f} | "
+            f"Funding'e {mins_to_funding:.0f}dk kaldı"
+        )
+
+        if PAPER_TRADING:
+            _log(f"[PAPER FUNDING] {sym} {arb_pos.upper()} aç @ ${price:.4f} SL=${sl:.4f}")
+            ok = True
+        else:
+            # 3x kaldıraçla aç (funding arb için düşük kaldıraç)
+            try:
+                _okx_post("/api/v5/account/set-leverage", {
+                    "instId": inst_id, "lever": str(FUNDING_LEVERAGE), "mgnMode": "cross"
+                })
+            except:
+                pass
+            ok = place_order(
+                inst_id, arb_side,
+                FUNDING_NOTIONAL, price,
+                sl_price=sl,
+                tp1_price=0,   # TP yok — rate nötrleşince kapat
+                tp2_price=0,
+            )
+
+        if ok:
+            qty = FUNDING_NOTIONAL / price if price > 0 else 0
+            _funding_positions[sym] = {
+                "symbol":       sym,
+                "side":         arb_pos,
+                "entry":        price,
+                "sl":           sl,
+                "qty":          qty,
+                "funding_rate": rate,
+                "expected_gain": expected_gain_usdt,
+                "opened_at":    datetime.now(timezone.utc).isoformat(),
+                "current_price": price,
+            }
+            # DB kaydet
+            if db:
+                try:
+                    tid = db.open_trade(
+                        sym, arb_pos, price, sl, 0.0,
+                        FUNDING_NOTIONAL, 0,
+                        f"Funding Arb (%{rate_pct:.3f})",
+                        "paper" if PAPER_TRADING else "live"
+                    )
+                    if tid and trade_ids is not None:
+                        trade_ids[sym] = tid
+                except Exception as _de:
+                    _log(f"[FUNDING] DB açılış hatası: {_de}", "warning")
+
+            _log(f"[FUNDING ARB] ✅ {sym} {arb_pos.upper()} açıldı | Rate=%{rate_pct:.4f} | Beklenen kâr=${expected_gain_usdt:.4f}")
+
+
 def bot_loop():
     """Ana bot döngüsü — her LOOP_SECONDS saniyede çalışır."""
     _log(f"Bot motoru başlatıldı | Paper={PAPER_TRADING} | Kaldıraç={LEVERAGE}x | Coinler={list(COIN_MAP.values())}")
@@ -494,7 +694,14 @@ def bot_loop():
                 engine_state["signals"]    = signals
                 engine_state["last_scan"]  = datetime.now(timezone.utc).isoformat()
 
-            # 5. Emir gönder
+            # 5. Funding Rate Arbitrage (her 5 döngüde bir — ~5 dk)
+            if loop_num % 5 == 0:
+                try:
+                    run_funding_arbitrage(positions, db=db, trade_ids=_trade_ids)
+                except Exception as _fe:
+                    _log(f"[FUNDING] Döngü hatası: {_fe}", "warning")
+
+            # 6. Emir gönder
             open_count = len(positions)
             for sym, sig in signals.items():
                 if open_count >= MAX_POSITIONS:
