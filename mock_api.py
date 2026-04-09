@@ -79,8 +79,10 @@ def refresh_all():
                 current = _prices.get(sym, entry)
                 lev     = int(float(p.get("lever", 10)))
                 pnl     = float(p.get("upl", 0))
-                pnl_p   = float(p.get("uplRatio", 0)) * 100
+                margin  = float(p.get("margin", 0))
                 notional= float(p.get("notionalUsd", 0))
+                # PnL % = pnl / margin * 100 (marjin üzerinden gerçek oran)
+                pnl_p   = round((pnl / margin * 100) if margin > 0 else 0.0, 2)
                 is_manual = sym not in ALLOWED_COINS
 
                 # Bot engine'den SL/TP al
@@ -116,17 +118,26 @@ def refresh_all():
                 avail, total = 0.0, 0.0
 
             total_unr = sum(p["pnl"] for p in _positions)
+
+            # DB'den gerçek istatistikleri al
+            db_stats = {}
+            try:
+                import db_manager
+                db_stats = db_manager.get_stats()
+            except:
+                pass
+
             _stats = {
                 "totalBalance":      round(total, 2),
                 "availableBalance":  round(avail, 2),
                 "unrealizedPnl":     round(total_unr, 2),
                 "totalPnl":          round(total - float(os.getenv("INITIAL_BALANCE_USDT","1000")), 2),
                 "dailyPnl":          round(total_unr, 2),
-                "winRate":           0.0,
+                "winRate":           db_stats.get("winRate", 0.0),
                 "profitFactor":      0.0,
-                "totalTrades":       0,
-                "winningTrades":     0,
-                "losingTrades":      0,
+                "totalTrades":       db_stats.get("totalTrades", 0),
+                "winningTrades":     db_stats.get("winningTrades", 0),
+                "losingTrades":      db_stats.get("losingTrades", 0),
                 "consecutiveLosses": 0,
                 "openPositions":     len(_positions),
             }
