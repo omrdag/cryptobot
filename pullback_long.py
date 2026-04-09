@@ -55,14 +55,14 @@ class StrategyState:
         self.symbol_cooldowns:   Dict[str, float] = {}
         self.symbol_loss_streak: Dict[str, int]   = {}
         self.daily_trade_count:  int               = 0
-        self.max_daily_trades:   int               = 20  # Scalping: daha fazla işlem
+        self.max_daily_trades:   int               = 12  # günlük sistemik tavan
 
     def is_symbol_on_cooldown(self, symbol: str) -> bool:
         return time.time() < self.symbol_cooldowns.get(symbol, 0)
 
     def set_symbol_cooldown(self, symbol: str, minutes: int):
         self.symbol_cooldowns[symbol] = time.time() + minutes * 60
-        logger.info(f"[PullbackStrategy] {symbol}: {minutes} dk cooldown başladı (scalping)")
+        logger.info(f"[PullbackStrategy] {symbol}: {minutes} dk cooldown başladı")
 
     def register_trade_result(self, symbol: str, won: bool):
         if won:
@@ -100,14 +100,34 @@ def _is_trend_up(d: dict) -> bool:
     - Fiyat EMA50 üzerinde (trend desteği)
     - EMA50 eğimi pozitif (trend hâlâ yukarı)
     """
-    # Scalping: EMA hizası + makro trend kontrolü eklendi
-    ema200_ok = d.get("ema200", 0) == 0 or d["close"] > d.get("ema200", 0) * 0.99
     return (
         d["close"] > d["ema50"] and
         d["ema9"] > d["ema21"] > d["ema50"] and
-        d["ema50"] > d["ema50_prev"] and
-        ema200_ok  # Makro trend desteği
+        d["ema50"] > d["ema50_prev"]
     )
+
+
+def _is_above_vwap(d: dict) -> bool:
+    """
+    VWAP filtresi — fiyat VWAP üzerinde olmalı.
+    VWAP = günlük hacim ağırlıklı ortalama fiyat.
+    Fiyat VWAP üzerindeyse kurumsal alıcılar aktif demektir.
+    vwap=0 ise (hesaplanamadıysa) filtreyi geç.
+    """
+    vwap = d.get("vwap", 0)
+    if vwap <= 0:
+        return True  # VWAP yoksa filtreyi atla
+    return d["close"] > vwap * 0.999  # %0.1 tolerans
+
+
+def _is_good_session(hour_utc: int) -> bool:
+    """
+    Piyasa saati filtresi — en yüksek hacim ve trend kalitesi saatleri.
+    Araştırma: 08-12 UTC (Avrupa açılış) ve 13-17 UTC (ABD öncesi) en iyi.
+    Gece 00-06 UTC düşük hacim → daha fazla sahte sinyal.
+    """
+    good_hours = list(range(7, 18))   # 07:00-17:59 UTC (Avrupa+ABD örtüşmesi)
+    return hour_utc in good_hours
 
 
 def _is_pullback_entry(d: dict) -> bool:
@@ -123,8 +143,8 @@ def _is_pullback_entry(d: dict) -> bool:
     atr      = d["atr"]
 
     distance           = abs(close - ema21)
-    touched_zone       = (distance <= atr * 0.8) or (low <= ema21 * 1.001)  # Scalping: daha sıkı pullback zonu
-    not_too_extended   = close <= ema21 + atr * 1.2  # Scalping: uzak girişleri reddet
+    touched_zone       = (distance <= atr * 1.2) or (low <= ema21)
+    not_too_extended   = close <= ema21 + atr * 2.0
 
     return touched_zone and not_too_extended
 
@@ -134,12 +154,12 @@ def _is_momentum_healthy(d: dict) -> bool:
     RSI momentum zonu: 36-70 (gevşetilmiş, v2).
     ADX minimum 15 (önceki: 20).
     """
-    return 40 <= d["rsi"] <= 62 and d["adx"] >= 20  # Scalping: daha sıkı RSI + ADX eşiği
+    return 36 <= d["rsi"] <= 70 and d["adx"] >= 15
 
 
 def _is_volume_confirmed(d: dict) -> bool:
     """Son hacim 20-bar ortalamasının 1.05x üzerinde (hafif eşik — kalite ile denge)."""
-    return d["volume"] > d["volume_ma20"] * 1.3  # Scalping: güçlü hacim şart
+    return d["volume"] > d["volume_ma20"] * 1.05
 
 
 def _is_volatility_acceptable(d: dict) -> bool:
@@ -154,7 +174,7 @@ def _is_volatility_acceptable(d: dict) -> bool:
     atr_pct      = atr / close if close > 0 else 0
     bb_width_pct = bb_range / close if close > 0 else 0
 
-    if atr_pct < 0.002:        # Scalping: daha düşük volatilite de kabul
+    if atr_pct < 0.004:        # Çok düşük volatilite
         return False
     if bb_width_pct > 0.15:    # Aşırı genişleme (önceki: 0.12)
         return False
@@ -163,7 +183,7 @@ def _is_volatility_acceptable(d: dict) -> bool:
 
 # ─── Skor Hesaplama ────────────────────────────────────────────────────────────
 
-def _calculate_signal_score(d: dict) -> Tuple[int, list]:
+def _calculate_signal_score(d: dict, hour_utc: int = 12) -> Tuple[int, list]:
     """
     10 üzerinden puan ver. 7 ve üzeri → işlem aç.
 
@@ -173,6 +193,8 @@ def _calculate_signal_score(d: dict) -> Tuple[int, list]:
       Momentum         = 2 puan
       Hacim            = 2 puan
       Volatilite       = 1 puan
+      VWAP bonus       = +1 puan (VWAP üzerinde ise)
+    Toplam max = 11 puan
     """
     score   = 0
     reasons = []
@@ -202,8 +224,8 @@ def _calculate_signal_score(d: dict) -> Tuple[int, list]:
         reasons.append(f"✓ Momentum sağlıklı (RSI={d['rsi']:.1f}, ADX={d['adx']:.1f})")
     else:
         reasons.append(
-            f"✗ Momentum sorunlu (RSI={d['rsi']:.1f} [beklenen:42-62], "
-            f"ADX={d['adx']:.1f} [min:20])"
+            f"✗ Momentum sorunlu (RSI={d['rsi']:.1f} [beklenen:36-70], "
+            f"ADX={d['adx']:.1f} [min:15])"
         )
 
     if _is_volume_confirmed(d):
@@ -223,41 +245,51 @@ def _calculate_signal_score(d: dict) -> Tuple[int, list]:
     else:
         reasons.append(f"✗ Volatilite uygun değil (ATR/fiyat sınır dışı)")
 
+    # VWAP bonus — fiyat VWAP üzerindeyse +1 puan
+    if _is_above_vwap(d):
+        vwap = d.get("vwap", 0)
+        if vwap > 0:
+            score += 1
+            reasons.append(f"✓ VWAP üzerinde (fiyat=${d['close']:.4f} > VWAP=${vwap:.4f})")
+        # vwap=0 → sessiz geç (filtre atlandı)
+    else:
+        vwap = d.get("vwap", 0)
+        reasons.append(f"✗ VWAP altında (fiyat=${d['close']:.4f} < VWAP=${vwap:.4f}) — zayıf kurumsal destek")
+
+    # Piyasa saati bilgisi (puan değil, log için)
+    if not _is_good_session(hour_utc):
+        reasons.append(f"⚠ Düşük hacim saati (UTC {hour_utc}:xx — önerilen 07-17)")
+
     return score, reasons
 
 
 # ─── Ana Sinyal Fonksiyonu ─────────────────────────────────────────────────────
 
 def build_long_signal(
-    symbol:   str,
-    hour_utc: int,
-    d:        dict,
-    state:    StrategyState,
-    min_score: int = 8,  # Scalping: daha yüksek kalite eşiği (7→8)
+    symbol:    str,
+    hour_utc:  int,
+    d:         dict,
+    state:     StrategyState,
+    min_score: int  = 7,
+    df_5m:     "pd.DataFrame | None" = None,
+    df_15m:    "pd.DataFrame | None" = None,
 ) -> SignalResult:
     """
     Tüm filtrelerden geçen yüksek kalite BUY sinyali üretir.
 
-    Beklenen 'd' anahtarları:
-      close, low, ema9, ema21, ema50, ema50_prev,
-      rsi, adx, atr, bb_upper, bb_lower, volume, volume_ma20
+    Yeni parametreler (MTF):
+      df_5m  — 5 dakikalık OHLCV (opsiyonel, trend onayı için)
+      df_15m — 15 dakikalık OHLCV (opsiyonel, ana trend için)
     """
     # 1. Günlük limit
     if state.daily_trade_count >= state.max_daily_trades:
         return SignalResult(False, 0, "Günlük işlem limiti doldu")
 
-    # 2. Oturum filtresi
-    if not _in_allowed_session(hour_utc):
-        return SignalResult(
-            False, 0,
-            f"İzin verilen oturum dışı (UTC {hour_utc}:00 — beklenen: 20-22)"
-        )
-
-    # 3. Symbol cooldown
+    # 2. Symbol cooldown
     if state.is_symbol_on_cooldown(symbol):
         return SignalResult(False, 0, f"{symbol} cooldown aktif")
 
-    # 4. Symbol ban (3 art arda kayıp)
+    # 3. Symbol ban (3 art arda kayıp)
     if state.should_ban_symbol(symbol):
         streak = state.symbol_loss_streak.get(symbol, 0)
         return SignalResult(
@@ -265,21 +297,47 @@ def build_long_signal(
             f"{symbol} geçici yasaklı ({streak} art arda kayıp)"
         )
 
-    # 5. Puan hesapla
-    score, reasons = _calculate_signal_score(d)
+    # 4. Piyasa saati filtresi — düşük hacim saatlerinde min_score artır
+    session_ok = _is_good_session(hour_utc)
+    effective_min = min_score if session_ok else min_score + 1
 
-    if score < min_score:
+    # 5. MTF trend onayı (opsiyonel — df_5m veya df_15m varsa)
+    mtf_bonus = 0
+    mtf_notes = []
+    if df_5m is not None and len(df_5m) >= 55:
+        ind5 = _extract_indicators(df_5m)
+        if ind5 and _is_trend_up(ind5):
+            mtf_bonus += 1
+            mtf_notes.append("✓ 5dk trend yukarı")
+        elif ind5:
+            mtf_notes.append("✗ 5dk trend olumsuz")
+    if df_15m is not None and len(df_15m) >= 55:
+        ind15 = _extract_indicators(df_15m)
+        if ind15 and _is_trend_up(ind15):
+            mtf_bonus += 1
+            mtf_notes.append("✓ 15dk trend yukarı")
+        elif ind15:
+            mtf_notes.append("✗ 15dk trend olumsuz")
+
+    # 6. Ana timeframe skor hesapla
+    score, reasons = _calculate_signal_score(d, hour_utc=hour_utc)
+    score += mtf_bonus
+    if mtf_notes:
+        reasons.extend(mtf_notes)
+
+    if score < effective_min:
+        session_note = f" (gece saati: min {effective_min} gerekli)" if not session_ok else ""
         return SignalResult(
             False, score,
-            f"Puan yetersiz ({score}/{min_score}): {' | '.join(reasons)}"
+            f"Puan yetersiz ({score}/{effective_min}){session_note}: {' | '.join(reasons)}"
         )
 
     # 6. SL / TP (ATR tabanlı, ATR×2.5 — daha geniş nefes alanı)
     entry_price = d["close"]
     atr         = d["atr"]
-    stop_loss   = entry_price - (atr * 1.2)    # Scalping: ATR×1.2 dar SL
+    stop_loss   = entry_price - (atr * 2.5)    # ATR×2.5: küçük geri çekilmelerden etkilenmez
     risk        = entry_price - stop_loss
-    take_profit = entry_price + (risk * 1.8)   # Scalping: RR 1.8x (dar SL ile daha kolay ulaşılır)
+    take_profit = entry_price + (risk * 1.6)   # RR = 1.6× (daha ulaşılabilir hedef)
 
     return SignalResult(
         should_enter     = True,
@@ -288,7 +346,7 @@ def build_long_signal(
         entry_price      = entry_price,
         stop_loss        = stop_loss,
         take_profit      = take_profit,
-        min_hold_minutes = 5,   # Scalping: 5 dakika min hold
+        min_hold_minutes = 30,
         volume_ok        = _is_volume_confirmed(d),
     )
 
@@ -330,6 +388,18 @@ def _adx(df: pd.DataFrame, period: int = 14) -> float:
     dx    = (abs(di_p - di_m) / (di_p + di_m + 1e-9) * 100).fillna(0)
     return float(dx.ewm(span=period, adjust=False).mean().iloc[-1])
 
+def _vwap(df: pd.DataFrame) -> float:
+    """Günlük VWAP hesapla (volume weighted average price)."""
+    if "volume" not in df.columns:
+        return 0.0
+    try:
+        typical = (df["high"] + df["low"] + df["close"]) / 3
+        vwap = (typical * df["volume"]).cumsum() / df["volume"].cumsum()
+        return float(vwap.iloc[-1])
+    except:
+        return 0.0
+
+
 def _extract_indicators(df: pd.DataFrame) -> Optional[dict]:
     """DataFrame'den strateji için gereken tüm indikatörleri hesapla."""
     min_bars = 55
@@ -350,8 +420,10 @@ def _extract_indicators(df: pd.DataFrame) -> Optional[dict]:
     bb_lower = (bb_mid - 2 * bb_std).iloc[-1]
 
     vol_col      = "volume" if "volume" in df.columns else None
-    volume       = float(df[vol_col].iloc[-1])      if vol_col else 0.0
+    volume       = float(df[vol_col].iloc[-1])        if vol_col else 0.0
     volume_ma20  = float(df[vol_col].tail(20).mean()) if vol_col else 1.0
+
+    vwap_val = _vwap(df)
 
     return {
         "close":       float(close.iloc[-1]),
@@ -367,6 +439,7 @@ def _extract_indicators(df: pd.DataFrame) -> Optional[dict]:
         "bb_lower":    float(bb_lower),
         "volume":      volume,
         "volume_ma20": volume_ma20,
+        "vwap":        vwap_val,
     }
 
 
@@ -401,11 +474,16 @@ class PullbackLongStrategy(BaseStrategy):
     def generate(
         self,
         df:       pd.DataFrame,
-        symbol:   str       = "UNKNOWN",
-        hour_utc: Optional[int] = None,
+        symbol:   str            = "UNKNOWN",
+        hour_utc: Optional[int]  = None,
+        df_5m:    "pd.DataFrame | None" = None,
+        df_15m:   "pd.DataFrame | None" = None,
     ) -> SignalResult:
         """
-        Tam sinyal üretimi. main.py'deki döngü bu metodu çağırmalı.
+        Tam sinyal üretimi.
+        df      — 1dk OHLCV (ana timeframe)
+        df_5m   — 5dk OHLCV (MTF trend onayı, opsiyonel)
+        df_15m  — 15dk OHLCV (MTF ana trend, opsiyonel)
         """
         from datetime import datetime, timezone
         if hour_utc is None:
@@ -423,6 +501,8 @@ class PullbackLongStrategy(BaseStrategy):
             d         = indicators,
             state     = self.state,
             min_score = self.min_score,
+            df_5m     = df_5m,
+            df_15m    = df_15m,
         )
         self.last_result = result
 
@@ -430,28 +510,32 @@ class PullbackLongStrategy(BaseStrategy):
         d = indicators
         atr_pct = (d["atr"] / d["close"] * 100) if d.get("close", 0) > 0 else 0
         pullback_dist = abs(d["close"] - d["ema21"])
+        vwap = d.get("vwap", 0)
         self.last_conditions = {
             "price":     round(d["close"], 6),
             "ema9":      round(d["ema9"], 6),
             "ema21":     round(d["ema21"], 6),
             "ema50":     round(d["ema50"], 6),
+            "vwap":      round(vwap, 4) if vwap > 0 else 0,
             "rsi":       round(d["rsi"], 1),
             "adx":       round(d["adx"], 1),
             "atr_pct":   round(atr_pct, 3),
             "vol_ratio": round(d["volume"] / d["volume_ma20"], 2) if d.get("volume_ma20", 0) > 0 else 0,
             "pullback_dist_pct": round(pullback_dist / d["close"] * 100, 2) if d.get("close", 0) > 0 else 0,
+            "session_ok": _is_good_session(hour_utc),
             "conditions": {
-                "trend":      {"ok": _is_trend_up(d),               "weight": 3, "label": "Trend Hizası",   "detail": f"EMA9>{d['ema9']:.4f} > EMA21>{d['ema21']:.4f} > EMA50>{d['ema50']:.4f}"},
-                "pullback":   {"ok": _is_pullback_entry(d),          "weight": 2, "label": "Pullback Zonu",  "detail": f"Mesafe: %{round(pullback_dist / d['close'] * 100, 2) if d['close'] > 0 else 0:.2f}"},
-                "momentum":   {"ok": _is_momentum_healthy(d),        "weight": 2, "label": "Momentum",      "detail": f"RSI:{d['rsi']:.1f} ADX:{d['adx']:.1f}"},
-                "volume":     {"ok": _is_volume_confirmed(d),        "weight": 2, "label": "Hacim Onayı",   "detail": f"Vol/Ort: x{round(d['volume'] / d['volume_ma20'], 2) if d.get('volume_ma20', 0) > 0 else 0:.2f}"},
-                "volatility": {"ok": _is_volatility_acceptable(d),   "weight": 1, "label": "Volatilite",    "detail": f"ATR%:{atr_pct:.2f}"},
+                "trend":      {"ok": _is_trend_up(d),              "weight": 3, "label": "Trend Hizası",   "detail": f"EMA9>{d['ema9']:.4f} > EMA21>{d['ema21']:.4f} > EMA50>{d['ema50']:.4f}"},
+                "pullback":   {"ok": _is_pullback_entry(d),        "weight": 2, "label": "Pullback Zonu",  "detail": f"Mesafe: %{round(pullback_dist / d['close'] * 100, 2) if d['close'] > 0 else 0:.2f}"},
+                "momentum":   {"ok": _is_momentum_healthy(d),      "weight": 2, "label": "Momentum",      "detail": f"RSI:{d['rsi']:.1f} ADX:{d['adx']:.1f}"},
+                "volume":     {"ok": _is_volume_confirmed(d),      "weight": 2, "label": "Hacim Onayı",   "detail": f"Vol/Ort: x{round(d['volume'] / d['volume_ma20'], 2) if d.get('volume_ma20', 0) > 0 else 0:.2f}"},
+                "volatility": {"ok": _is_volatility_acceptable(d), "weight": 1, "label": "Volatilite",    "detail": f"ATR%:{atr_pct:.2f}"},
+                "vwap":       {"ok": _is_above_vwap(d),            "weight": 1, "label": "VWAP",          "detail": f"Fiyat/VWAP: ${d['close']:.4f} / ${vwap:.4f}" if vwap > 0 else "VWAP yok"},
+                "session":    {"ok": _is_good_session(hour_utc),   "weight": 0, "label": "Piyasa Saati",  "detail": f"UTC {hour_utc}:xx {'✓ aktif saat' if _is_good_session(hour_utc) else '⚠ düşük hacim'}"},
             },
             "score":      result.score,
             "min_score":  self.min_score,
             "should_enter": result.should_enter,
             "blocked_reason": result.reason if not result.should_enter else None,
-            "session_ok": _in_allowed_session(hour_utc),
             "hour_utc":   hour_utc,
             "cooldown":   self.state.is_symbol_on_cooldown(symbol),
         }
@@ -459,15 +543,17 @@ class PullbackLongStrategy(BaseStrategy):
         if result.should_enter:
             logger.info(
                 f"✅ [{self.name}] {symbol} BUY | "
-                f"Puan:{result.score}/10 | "
+                f"Puan:{result.score}/11 | "
                 f"Giriş:{result.entry_price:.4f} | "
                 f"SL:{result.stop_loss:.4f} | TP:{result.take_profit:.4f} | "
-                f"{result.reason}"
+                f"VWAP={'✓' if _is_above_vwap(d) else '✗'} | "
+                f"Saat={'✓' if _is_good_session(hour_utc) else '⚠'} | "
+                f"{result.reason[:100]}"
             )
         else:
             logger.debug(
                 f"[{self.name}] {symbol} HOLD | "
-                f"Puan:{result.score}/10 | {result.reason[:80]}"
+                f"Puan:{result.score}/11 | {result.reason[:80]}"
             )
 
         return result
