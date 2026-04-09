@@ -432,6 +432,63 @@ function renderPositions(positions, gridId, cntId) {
     const sym=(p.symbol||'').replace('USDT','');
     const notional=+(p.notional||0);
     const isManual=p.is_adopted;
+    const entry=+(p.entry_price||0);
+    const sl=+(p.stop_loss||0);
+    const tp=+(p.take_profit||0);
+    const cur=+(p.current_price||0);
+
+    // SL/TP progress bar hesabı
+    let barHtml = '';
+    if(sl>0 && tp>0 && entry>0 && cur>0) {
+      if(il) {
+        // LONG: SL altında, TP üstte
+        const total = tp - sl;
+        const pos   = Math.max(0, Math.min(total, cur - sl));
+        const pct   = total>0 ? (pos/total*100) : 50;
+        const slDist = ((cur-sl)/entry*100).toFixed(2);
+        const tpDist = ((tp-cur)/entry*100).toFixed(2);
+        const barColor = pct>60?'#00ffaa':pct>35?'#ffaa00':'#ff3355';
+        barHtml = `
+        <div style="margin:8px 0 4px">
+          <div style="display:flex;justify-content:space-between;font-size:9px;font-family:'IBM Plex Mono',monospace;margin-bottom:4px">
+            <span style="color:#ff3355">SL $${sl.toLocaleString(undefined,{maximumFractionDigits:2})} <span style="color:var(--dim)">-${slDist}%</span></span>
+            <span style="color:var(--dim);font-size:9px">← fiyat pozisyonu →</span>
+            <span style="color:#00ffaa">TP $${tp.toLocaleString(undefined,{maximumFractionDigits:2})} <span style="color:var(--dim)">+${tpDist}%</span></span>
+          </div>
+          <div style="position:relative;height:8px;background:linear-gradient(to right,#ff335530,#ffaa0030,#00ffaa30);border-radius:4px;overflow:hidden">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:${barColor};border-radius:4px;opacity:0.85;transition:width 0.5s"></div>
+            <div style="position:absolute;top:0;bottom:0;left:${pct}%;transform:translateX(-50%);width:3px;background:#fff;border-radius:2px;opacity:0.9"></div>
+          </div>
+          <div style="display:flex;justify-content:center;margin-top:3px">
+            <span style="font-size:9px;font-family:'IBM Plex Mono',monospace;color:${barColor}">%${pct.toFixed(0)} TP'ye doğru</span>
+          </div>
+        </div>`;
+      } else {
+        // SHORT: SL üstte, TP altında
+        const total = sl - tp;
+        const pos   = Math.max(0, Math.min(total, sl - cur));
+        const pct   = total>0 ? (pos/total*100) : 50;
+        const slDist = ((sl-cur)/entry*100).toFixed(2);
+        const tpDist = ((cur-tp)/entry*100).toFixed(2);
+        const barColor = pct>60?'#00ffaa':pct>35?'#ffaa00':'#ff3355';
+        barHtml = `
+        <div style="margin:8px 0 4px">
+          <div style="display:flex;justify-content:space-between;font-size:9px;font-family:'IBM Plex Mono',monospace;margin-bottom:4px">
+            <span style="color:#00ffaa">TP $${tp.toLocaleString(undefined,{maximumFractionDigits:2})} <span style="color:var(--dim)">+${tpDist}%</span></span>
+            <span style="color:var(--dim);font-size:9px">← fiyat pozisyonu →</span>
+            <span style="color:#ff3355">SL $${sl.toLocaleString(undefined,{maximumFractionDigits:2})} <span style="color:var(--dim)">-${slDist}%</span></span>
+          </div>
+          <div style="position:relative;height:8px;background:linear-gradient(to right,#00ffaa30,#ffaa0030,#ff335530);border-radius:4px;overflow:hidden">
+            <div style="position:absolute;left:0;top:0;bottom:0;width:${pct}%;background:${barColor};border-radius:4px;opacity:0.85;transition:width 0.5s"></div>
+            <div style="position:absolute;top:0;bottom:0;left:${pct}%;transform:translateX(-50%);width:3px;background:#fff;border-radius:2px;opacity:0.9"></div>
+          </div>
+          <div style="display:flex;justify-content:center;margin-top:3px">
+            <span style="font-size:9px;font-family:'IBM Plex Mono',monospace;color:${barColor}">%${pct.toFixed(0)} TP'ye doğru</span>
+          </div>
+        </div>`;
+      }
+    }
+
     return`<div class="pc">
       <div class="pc-top">
         <div>
@@ -440,7 +497,6 @@ function renderPositions(positions, gridId, cntId) {
             <span class="ptag pt-lev">${p.leverage||10}×</span>
             ${isManual?'<span class="ptag pt-manual">MANUEL</span>':''}
             <span class="ptag pt-notional">$${notional.toLocaleString(undefined,{maximumFractionDigits:0})} notional</span>
-            ${p.stop_loss?'<span class="ptag pt-tp">SL $'+p.stop_loss.toFixed(2)+'</span>':''}
           </div>
           <div class="pc-sym">${sym}USDT</div>
         </div>
@@ -450,10 +506,11 @@ function renderPositions(positions, gridId, cntId) {
           <div class="pc-pnl-pct" style="color:${pnl>=0?'var(--accent)':'var(--danger)'}">${fP(pnlP)}</div>
         </div>
       </div>
+      ${barHtml}
       <div class="pc-details">
-        <div class="pd-item"><div class="pd-label">Giriş</div><div class="pd-val">$${(+(p.entry_price||0)).toLocaleString()}</div></div>
-        <div class="pd-item"><div class="pd-label">Güncel</div><div class="pd-val" style="color:${il?'var(--accent)':'var(--danger)'}">$${(+(p.current_price||0)).toLocaleString()}</div></div>
-        <div class="pd-item"><div class="pd-label">Yatırılan</div><div class="pd-val" style="color:var(--gold)">$${((+(p.quantity||0))*(+(p.entry_price||0))/(p.leverage||10)).toFixed(2)}</div></div>
+        <div class="pd-item"><div class="pd-label">Giriş</div><div class="pd-val">$${entry.toLocaleString()}</div></div>
+        <div class="pd-item"><div class="pd-label">Güncel</div><div class="pd-val" style="color:${il?'var(--accent)':'var(--danger)'}">$${cur.toLocaleString()}</div></div>
+        <div class="pd-item"><div class="pd-label">Yatırılan</div><div class="pd-val" style="color:var(--gold)">$${((+(p.quantity||0))*entry/(p.leverage||10)).toFixed(2)}</div></div>
         <div class="pd-item"><div class="pd-label">Notional</div><div class="pd-val">$${notional.toLocaleString(undefined,{maximumFractionDigits:0})}</div></div>
       </div>
       <div style="font-size:10px;color:var(--dim);font-family:'IBM Plex Mono',monospace">${p.strategy_name||'Pullback Long v3'}</div>
