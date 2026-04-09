@@ -227,20 +227,74 @@ def get_logs():
 
 @app.get("/api/trades")
 def get_trades():
+    all_trades = []
+
+    # 1. DB'deki bot işlemleri
     try:
         import db_manager
-        trades = db_manager.get_trades(limit=50)
-        # Datetime nesnelerini string'e çevir
-        for t in trades:
+        db_trades = db_manager.get_trades(limit=100)
+        for t in db_trades:
             for k in ["opened_at", "closed_at"]:
                 if t.get(k) and hasattr(t[k], "isoformat"):
                     t[k] = t[k].isoformat()
             for k in ["entry_price","exit_price","pnl","pnl_pct"]:
                 if t.get(k) is not None:
                     t[k] = float(t[k])
-        return JSONResponse(trades)
-    except Exception as e:
-        return JSONResponse([])
+            t["source"] = "bot"
+        all_trades.extend(db_trades)
+    except Exception:
+        pass
+
+    # 2. OKX geçmiş işlemleri (son 50)
+    if OKX_KEY:
+        try:
+            okx_data = _okx_get("/api/v5/trade/fills?instType=SWAP&limit=50")
+            okx_fills = okx_data.get("data", [])
+
+            # OKX fill'lerini trade formatına çevir
+            seen_ids = {t.get("exchange_order_id") for t in all_trades if t.get("exchange_order_id")}
+            for f in okx_fills:
+                order_id = f.get("ordId", "")
+                if order_id in seen_ids:
+                    continue  # DB'de zaten var
+
+                inst_id = f.get("instId", "")
+                sym = inst_id.replace("-USDT-SWAP","USDT").replace("-USDT","USDT").replace("-","")
+                side_raw = f.get("side", "buy")
+                pos_side = f.get("posSide", "long")
+                price = float(f.get("fillPx", 0) or 0)
+                qty   = float(f.get("fillSz", 0) or 0)
+                fee   = float(f.get("fee", 0) or 0)
+                ts_ms = int(f.get("ts", 0) or 0)
+                ts_str = datetime.utcfromtimestamp(ts_ms/1000).isoformat() if ts_ms else None
+
+                # PnL: OKX fills'de pnl alanı var
+                pnl = float(f.get("pnl", 0) or 0)
+
+                all_trades.append({
+                    "id": None,
+                    "symbol": sym,
+                    "side": pos_side,
+                    "entry_price": price,
+                    "exit_price": price if side_raw in ("sell","buy") else None,
+                    "pnl": pnl,
+                    "pnl_pct": 0.0,
+                    "strategy": "OKX",
+                    "mode": "live",
+                    "status": "closed",
+                    "opened_at": ts_str,
+                    "closed_at": ts_str,
+                    "exit_reason": side_raw,
+                    "score": 0,
+                    "source": "okx",
+                    "exchange_order_id": order_id,
+                })
+        except Exception:
+            pass
+
+    # Tarihe göre sırala (en yeni önce)
+    all_trades.sort(key=lambda t: t.get("opened_at") or "", reverse=True)
+    return JSONResponse(all_trades[:100])
 
 @app.get("/api/settings")
 def get_settings():
