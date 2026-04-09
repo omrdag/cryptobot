@@ -427,6 +427,114 @@ function renderPositions(positions, gridId, cntId) {
   }
   if(cnt) cnt.textContent=positions.length+' Pozisyon';
   grid.innerHTML=positions.map(p=>{
+    const il      = p.side==='long';
+    const pnl     = +(p.pnl||0);
+    const pnlP    = +(p.pnl_percent||0);
+    const sym     = (p.symbol||'').replace('USDT','');
+    const notional= +(p.notional||0);
+    const isManual= p.is_adopted;
+    const entry   = +(p.entry_price||0);
+    const sl      = +(p.stop_loss||0);
+    const tp      = +(p.take_profit||0);
+    const cur     = +(p.current_price||0);
+    const lev     = p.leverage||10;
+    const margin  = notional/lev;
+    const win     = pnl >= 0;
+    const accentC = win ? '#00ffaa' : '#ff3355';
+
+    // SL/TP bar
+    let barHtml = '';
+    if(sl>0 && tp>0 && entry>0 && cur>0) {
+      const total = il ? (tp-sl) : (sl-tp);
+      const pos   = il ? Math.max(0,Math.min(total,cur-sl)) : Math.max(0,Math.min(total,sl-cur));
+      const pct   = total>0 ? (pos/total*100) : 50;
+      const slDist= il ? ((cur-sl)/entry*100).toFixed(2) : ((sl-cur)/entry*100).toFixed(2);
+      const tpDist= il ? ((tp-cur)/entry*100).toFixed(2) : ((cur-tp)/entry*100).toFixed(2);
+      const barC  = pct>65?'#00ffaa':pct>35?'#ffaa00':'#ff3355';
+      const fmt   = v => v>1000 ? '$'+v.toLocaleString(undefined,{maximumFractionDigits:0}) : '$'+v.toFixed(v>100?1:v>10?2:3);
+      barHtml = `
+      <div style="margin:12px 0 8px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <div style="display:flex;flex-direction:column;gap:1px">
+            <span style="font-size:10px;font-weight:600;color:#ff3355;font-family:'IBM Plex Mono',monospace">SL ${fmt(sl)}</span>
+            <span style="font-size:9px;color:#ff335588">-${slDist}%</span>
+          </div>
+          <span style="font-size:9px;color:var(--dim);letter-spacing:.04em">fiyat pozisyonu</span>
+          <div style="display:flex;flex-direction:column;gap:1px;text-align:right">
+            <span style="font-size:10px;font-weight:600;color:#00ffaa;font-family:'IBM Plex Mono',monospace">TP ${fmt(tp)}</span>
+            <span style="font-size:9px;color:#00ffaa88">+${tpDist}%</span>
+          </div>
+        </div>
+        <div style="position:relative;height:10px;border-radius:5px;overflow:hidden;background:#0f1320">
+          <div style="position:absolute;inset:0;background:linear-gradient(to right,#ff335520 0%,#ffaa0020 50%,#00ffaa20 100%)"></div>
+          <div style="position:absolute;left:0;top:0;bottom:0;width:${pct.toFixed(1)}%;background:${barC};opacity:0.7;border-radius:5px;transition:width .6s ease"></div>
+          <div style="position:absolute;top:1px;bottom:1px;left:calc(${pct.toFixed(1)}% - 1.5px);width:3px;background:#fff;border-radius:2px;opacity:0.95"></div>
+        </div>
+        <div style="display:flex;justify-content:center;margin-top:5px">
+          <span style="font-size:10px;font-weight:500;color:${barC};font-family:'IBM Plex Mono',monospace;letter-spacing:.03em">%${pct.toFixed(0)} · TP'ye ${tpDist}% kaldı</span>
+        </div>
+      </div>`;
+    }
+
+    // Coin rengi
+    const coinColors = {BTC:'#f7931a',ETH:'#627eea',SOL:'#9945ff',BNB:'#f0b90b',AVAX:'#e84142'};
+    const coinC = coinColors[sym] || '#8b949e';
+
+    return`<div style="background:var(--s1);border:1px solid ${win?'#00ffaa18':'#ff335518'};border-top:2px solid ${win?'#00ffaa':'#ff3355'};border-radius:10px;padding:14px;transition:all .2s;position:relative;overflow:hidden">
+      <div style="position:absolute;top:0;right:0;width:80px;height:80px;background:${coinC}06;border-radius:0 0 0 80px;pointer-events:none"></div>
+
+      <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
+        <div>
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:5px">
+            <span style="width:8px;height:8px;border-radius:50%;background:${coinC};flex-shrink:0"></span>
+            <span style="font-size:17px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--text);letter-spacing:-.3px">${sym}</span>
+            <span style="font-size:11px;color:var(--dim);font-family:'IBM Plex Mono',monospace">USDT</span>
+          </div>
+          <div style="display:flex;gap:5px;flex-wrap:wrap">
+            <span style="font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700;font-family:'IBM Plex Mono',monospace;background:${il?'#00ffaa15':'#ff335515'};color:${il?'#00ffaa':'#ff3355'};border:1px solid ${il?'#00ffaa25':'#ff335525'}">${il?'LONG':'SHORT'}</span>
+            <span style="font-size:9px;padding:2px 7px;border-radius:4px;font-family:'IBM Plex Mono',monospace;background:#ffffff08;color:var(--dim);border:1px solid var(--border)">${lev}×</span>
+            ${isManual?`<span style="font-size:9px;padding:2px 7px;border-radius:4px;font-family:'IBM Plex Mono',monospace;background:#aa55ff15;color:#aa55ff;border:1px solid #aa55ff25">MANUEL</span>`:''}
+          </div>
+        </div>
+        <div style="text-align:right">
+          <div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;margin-bottom:2px">
+            <span style="width:5px;height:5px;border-radius:50%;background:#00ffaa;animation:pulse 2s infinite"></span>
+            <span style="font-size:9px;color:#00ffaa;font-family:'IBM Plex Mono',monospace">CANLI</span>
+          </div>
+          <div style="font-size:20px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:${accentC};line-height:1">${pnl>=0?'+$':'-$'}${Math.abs(pnl).toFixed(2)}</div>
+          <div style="font-size:11px;font-weight:500;font-family:'IBM Plex Mono',monospace;color:${accentC}88;margin-top:2px">${pnlP>=0?'+':''}${pnlP.toFixed(2)}%</div>
+        </div>
+      </div>
+
+      ${barHtml}
+
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">
+        <div style="background:#ffffff05;border-radius:6px;padding:7px 10px;border:1px solid var(--border)">
+          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Giriş</div>
+          <div style="font-size:12px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:var(--text)">$${entry.toLocaleString(undefined,{maximumFractionDigits:entry>100?1:4})}</div>
+        </div>
+        <div style="background:#ffffff05;border-radius:6px;padding:7px 10px;border:1px solid var(--border)">
+          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Güncel</div>
+          <div style="font-size:12px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:${il?'#00ffaa':'#ff3355'}">$${cur.toLocaleString(undefined,{maximumFractionDigits:cur>100?1:4})}</div>
+        </div>
+        <div style="background:#ffffff05;border-radius:6px;padding:7px 10px;border:1px solid var(--border)">
+          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Marjin</div>
+          <div style="font-size:12px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:#ffaa00">$${margin.toFixed(2)}</div>
+        </div>
+        <div style="background:#ffffff05;border-radius:6px;padding:7px 10px;border:1px solid var(--border)">
+          <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Notional</div>
+          <div style="font-size:12px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:var(--text)">$${notional.toLocaleString(undefined,{maximumFractionDigits:0})}</div>
+        </div>
+      </div>
+
+      <div style="margin-top:8px;font-size:10px;color:var(--dim);font-family:'IBM Plex Mono',monospace;display:flex;align-items:center;gap:4px">
+        <span style="width:4px;height:4px;border-radius:50%;background:var(--dim)"></span>
+        ${p.strategy_name||'Pullback Long v3'}
+      </div>
+    </div>`;
+  }).join('');
+}
+  grid.innerHTML=positions.map(p=>{
     const il=p.side==='long';
     const pnl=+(p.pnl||0), pnlP=+(p.pnl_percent||0);
     const sym=(p.symbol||'').replace('USDT','');
