@@ -655,6 +655,16 @@ def run_funding_arbitrage(open_positions: list, db=None, trade_ids: dict = None)
             _log(f"[FUNDING ARB] ✅ {sym} {arb_pos.upper()} açıldı | Rate=%{rate_pct:.4f} | Beklenen kâr=${expected_gain_usdt:.4f}")
 
 
+PULLBACK_SHORT_ACTIVE = os.getenv("PULLBACK_SHORT_ACTIVE", "false").lower() == "true"
+LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "8"))    # varsayılan 8 (önceki 7)
+GOOD_HOURS_UTC        = list(range(7, 18))                        # 07:00-17:59 UTC
+
+
+def _is_good_trading_hour() -> bool:
+    """07:00-17:59 UTC arası aktif saat — Avrupa+ABD örtüşmesi."""
+    return datetime.now(timezone.utc).hour in GOOD_HOURS_UTC
+
+
 def bot_loop():
     """Ana bot döngüsü — her LOOP_SECONDS saniyede çalışır."""
     _log(f"Bot motoru başlatıldı | Paper={PAPER_TRADING} | Kaldıraç={LEVERAGE}x | Coinler={list(COIN_MAP.values())}")
@@ -712,7 +722,13 @@ def bot_loop():
                     _log(f"[FUNDING] Döngü hatası: {_fe}", "warning")
 
             # 6. Emir gönder
-            open_count = len(positions)
+            open_count  = len(positions)
+            hour_ok     = _is_good_trading_hour()
+            hour_utc    = datetime.now(timezone.utc).hour
+
+            if not hour_ok:
+                _log(f"⏸ Piyasa saati dışı (UTC {hour_utc}:xx) — yeni işlem açılmıyor (aktif: 07-17 UTC)")
+
             for sym, sig in signals.items():
                 if open_count >= MAX_POSITIONS:
                     break
@@ -721,16 +737,15 @@ def bot_loop():
 
                 inst_id = sig["inst_id"]
 
-                # Long sinyali
-                if sig["long"]["enter"] and sig["long"]["entry"]:
+                # Long sinyali — piyasa saati + min skor kontrolü
+                if sig["long"]["enter"] and sig["long"]["entry"] and hour_ok and sig["long"]["score"] >= LONG_MIN_SCORE:
                     price = sig["long"]["entry"]
                     sl    = sig["long"]["sl"] or price * (1 - 0.012)
                     tp    = sig["long"]["tp"] or price * (1 + 0.018)
-                    # Kısmi TP sistemi
                     risk  = price - sl
-                    tp1   = price + risk * 1.0   # 1R kâr → TP1 (%50 kapat)
-                    tp2   = price + risk * 2.0   # 2R kâr → TP2 (kalan kapat)
-                    _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/10 | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
+                    tp1   = price + risk * 1.0
+                    tp2   = price + risk * 2.0
+                    _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/11 | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
                     ok = place_order(inst_id, "buy", SLOT_NOTIONAL, price,
                                      sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
@@ -750,15 +765,15 @@ def bot_loop():
                             if tid:
                                 _trade_ids[sym] = tid
 
-                # Short sinyali (yalnızca long yoksa)
-                elif sig["short"]["enter"] and sig["short"]["entry"]:
+                # Short sinyali — devre dışı bırakıldı (PULLBACK_SHORT_ACTIVE=true ile açılır)
+                elif PULLBACK_SHORT_ACTIVE and sig["short"]["enter"] and sig["short"]["entry"] and hour_ok and sig["short"]["score"] >= LONG_MIN_SCORE:
                     price = sig["short"]["entry"]
                     sl    = sig["short"]["sl"] or price * (1 + 0.012)
                     tp    = sig["short"]["tp"] or price * (1 - 0.018)
                     risk  = sl - price
-                    tp1   = price - risk * 1.0   # 1R kâr → TP1
-                    tp2   = price - risk * 2.0   # 2R kâr → TP2
-                    _log(f"🔴 {sym} SHORT | Puan:{sig['short']['score']}/10 | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
+                    tp1   = price - risk * 1.0
+                    tp2   = price - risk * 2.0
+                    _log(f"🔴 {sym} SHORT | Puan:{sig['short']['score']}/11 | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
                     ok = place_order(inst_id, "sell", SLOT_NOTIONAL, price,
                                      sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
