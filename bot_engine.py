@@ -656,13 +656,12 @@ def run_funding_arbitrage(open_positions: list, db=None, trade_ids: dict = None)
 
 
 PULLBACK_SHORT_ACTIVE = os.getenv("PULLBACK_SHORT_ACTIVE", "false").lower() == "true"
-LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "8"))    # varsayılan 8 (önceki 7)
-GOOD_HOURS_UTC        = list(range(7, 18))                        # 07:00-17:59 UTC
+LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "7"))
+GOOD_HOURS_UTC        = list(range(0, 24))  # Her saat açık
 
 
 def _is_good_trading_hour() -> bool:
-    """07:00-17:59 UTC arası aktif saat — Avrupa+ABD örtüşmesi."""
-    return datetime.now(timezone.utc).hour in GOOD_HOURS_UTC
+    return True  # Kısıtlama yok
 
 
 def bot_loop():
