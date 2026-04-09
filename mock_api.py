@@ -212,7 +212,21 @@ def get_logs():
     return JSONResponse(bot_engine.engine_state.get("logs", []))
 
 @app.get("/api/trades")
-def get_trades(): return JSONResponse([])
+def get_trades():
+    try:
+        import db_manager
+        trades = db_manager.get_trades(limit=50)
+        # Datetime nesnelerini string'e çevir
+        for t in trades:
+            for k in ["opened_at", "closed_at"]:
+                if t.get(k) and hasattr(t[k], "isoformat"):
+                    t[k] = t[k].isoformat()
+            for k in ["entry_price","exit_price","pnl","pnl_pct"]:
+                if t.get(k) is not None:
+                    t[k] = float(t[k])
+        return JSONResponse(trades)
+    except Exception as e:
+        return JSONResponse([])
 
 @app.get("/api/settings")
 def get_settings():
