@@ -655,7 +655,7 @@ def run_funding_arbitrage(open_positions: list, db=None, trade_ids: dict = None)
             _log(f"[FUNDING ARB] ✅ {sym} {arb_pos.upper()} açıldı | Rate=%{rate_pct:.4f} | Beklenen kâr=${expected_gain_usdt:.4f}")
 
 
-PULLBACK_SHORT_ACTIVE = os.getenv("PULLBACK_SHORT_ACTIVE", "false").lower() == "true"
+PULLBACK_SHORT_ACTIVE = os.getenv("PULLBACK_SHORT_ACTIVE", "true").lower() == "true"
 LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "7"))
 GOOD_HOURS_UTC        = list(range(0, 24))  # Her saat açık
 
@@ -725,26 +725,40 @@ def bot_loop():
             hour_ok     = _is_good_trading_hour()
             hour_utc    = datetime.now(timezone.utc).hour
 
-            if not hour_ok:
-                _log(f"⏸ Piyasa saati dışı (UTC {hour_utc}:xx) — yeni işlem açılmıyor (aktif: 07-17 UTC)")
+            # Mevcut pozisyonları coin ve yön bazında indeksle
+            open_longs  = {p["instId"] for p in positions if p.get("side") == "long"}
+            open_shorts = {p["instId"] for p in positions if p.get("side") == "short"}
+
+            # Slot bölüşümü: MAX_POSITIONS yarısı LONG, yarısı SHORT
+            long_limit  = MAX_POSITIONS // 2 + (MAX_POSITIONS % 2)  # Üst yarı LONG (tek sayıda +1)
+            short_limit = MAX_POSITIONS // 2
+
+            long_count  = len(open_longs)
+            short_count = len(open_shorts)
 
             for sym, sig in signals.items():
                 if open_count >= MAX_POSITIONS:
+                    _log(f"⛔ Max pozisyon doldu ({open_count}/{MAX_POSITIONS}) — yeni işlem açılmıyor")
                     break
                 if sig["in_position"]:
                     continue
 
                 inst_id = sig["inst_id"]
 
-                # Long sinyali — piyasa saati + min skor kontrolü
-                if sig["long"]["enter"] and sig["long"]["entry"] and hour_ok and sig["long"]["score"] >= LONG_MIN_SCORE:
+                # ── LONG sinyali ──────────────────────────────────────────────
+                if (sig["long"]["enter"] and sig["long"]["entry"]
+                        and sig["long"]["score"] >= LONG_MIN_SCORE
+                        and inst_id not in open_longs   # Aynı coin'de long yok
+                        and inst_id not in open_shorts  # Aynı coin'de short da yok (çakışma engeli)
+                        and long_count < long_limit):   # Long slot dolmadı
+
                     price = sig["long"]["entry"]
                     sl    = sig["long"]["sl"] or price * (1 - 0.012)
                     tp    = sig["long"]["tp"] or price * (1 + 0.018)
                     risk  = price - sl
                     tp1   = price + risk * 1.0
                     tp2   = price + risk * 2.0
-                    _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/11 | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
+                    _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/11 | Slot:{long_count+1}/{long_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
                     ok = place_order(inst_id, "buy", SLOT_NOTIONAL, price,
                                      sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
@@ -756,7 +770,9 @@ def bot_loop():
                                 "opened_at": datetime.now(timezone.utc).isoformat(),
                                 "score": sig["long"]["score"],
                             }
-                        open_count += 1
+                        open_count  += 1
+                        long_count  += 1
+                        open_longs.add(inst_id)
                         if db:
                             tid = db.open_trade(sym, "long", price, sl, tp, SLOT_NOTIONAL,
                                                 sig["long"]["score"], "Pullback Long",
@@ -764,15 +780,21 @@ def bot_loop():
                             if tid:
                                 _trade_ids[sym] = tid
 
-                # Short sinyali — devre dışı bırakıldı (PULLBACK_SHORT_ACTIVE=true ile açılır)
-                elif PULLBACK_SHORT_ACTIVE and sig["short"]["enter"] and sig["short"]["entry"] and hour_ok and sig["short"]["score"] >= LONG_MIN_SCORE:
+                # ── SHORT sinyali ─────────────────────────────────────────────
+                elif (PULLBACK_SHORT_ACTIVE
+                        and sig["short"]["enter"] and sig["short"]["entry"]
+                        and sig["short"]["score"] >= LONG_MIN_SCORE
+                        and inst_id not in open_shorts  # Aynı coin'de short yok
+                        and inst_id not in open_longs   # Aynı coin'de long da yok (çakışma engeli)
+                        and short_count < short_limit): # Short slot dolmadı
+
                     price = sig["short"]["entry"]
                     sl    = sig["short"]["sl"] or price * (1 + 0.012)
                     tp    = sig["short"]["tp"] or price * (1 - 0.018)
                     risk  = sl - price
                     tp1   = price - risk * 1.0
                     tp2   = price - risk * 2.0
-                    _log(f"🔴 {sym} SHORT | Puan:{sig['short']['score']}/11 | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
+                    _log(f"🔴 {sym} SHORT | Puan:{sig['short']['score']}/11 | Slot:{short_count+1}/{short_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
                     ok = place_order(inst_id, "sell", SLOT_NOTIONAL, price,
                                      sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
@@ -784,7 +806,9 @@ def bot_loop():
                                 "opened_at": datetime.now(timezone.utc).isoformat(),
                                 "score": sig["short"]["score"],
                             }
-                        open_count += 1
+                        open_count  += 1
+                        short_count += 1
+                        open_shorts.add(inst_id)
                         if db:
                             tid = db.open_trade(sym, "short", price, sl, tp, SLOT_NOTIONAL,
                                                 sig["short"]["score"], "Pullback Short",
