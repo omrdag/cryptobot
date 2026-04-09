@@ -266,7 +266,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
           </div>
           <div>
             <div class="sig-detail-panel">
-              <div class="sdp-title">Pullback Long — Giriş Koşulları</div>
+              <div class="sdp-title" id="sdp-title">Pullback Long — Giriş Koşulları</div>
               <div id="sdp-coins"></div>
               <div class="sdp-indicators" id="sdp-indicators"></div>
             </div>
@@ -467,41 +467,120 @@ function renderSignalPage() {
   document.getElementById('si-coin-count').textContent = coins.length + ' coin izleniyor';
 
   let readyCount=0, approachCount=0;
+
+  // Ana tablo
   const rows = document.getElementById('sig-rows');
   rows.innerHTML = coins.map(sym => {
     const sig = sigs[sym] || {};
-    const longScore = sig.long?.score || 0;
+    const longScore  = sig.long?.score  || 0;
     const shortScore = sig.short?.score || 0;
-    const bestScore = Math.max(longScore, shortScore);
-    const isLong = sig.long?.enter;
+    const bestScore  = Math.max(longScore, shortScore);
+    const isLong  = sig.long?.enter;
     const isShort = sig.short?.enter;
-    const inPos = sig.in_position;
-    let status, stlbl, stcls;
-    if(inPos){ status='active'; stlbl='AKTİF'; stcls='st-active'; }
-    else if(isLong||isShort){ status='active'; stlbl='SİNYAL'; stcls='st-active'; readyCount++; }
-    else if(bestScore>=6){ status='approach'; stlbl='YAKLAŞIYOR'; stcls='st-approach'; approachCount++; }
-    else{ status='watch'; stlbl='İZLEME'; stcls='st-watch'; }
-    const color=bestScore>=8?'var(--accent)':bestScore>=6?'var(--gold)':'var(--danger)';
-    const strat = isLong?'LONG':isShort?'SHORT':'PLLBK';
-    const stratCls = isShort?'strat-mom':'strat-plbk';
-    const lp = _livePrices[sym] || 0;
-    return`<div class="sig-row">
-      <div class="sig-sym"><span class="sig-dot" style="background:${bestScore>=7?'var(--accent)':'var(--dim)'}"></span>${sym.replace('USDT','')}<small style="color:var(--dim);font-size:9px;margin-left:2px">${lp>0?'$'+lp.toLocaleString():''}</small></div>
-      <div><span class="sig-strat ${stratCls}">${strat}</span></div>
-      <div class="sig-score-wrap"><span class="sig-score-num" style="color:${color}">${bestScore}</span><div class="sig-score-bar"><div class="sig-score-fill" style="width:${bestScore*10}%;background:${color}"></div></div><span style="color:var(--dim);font-size:9px;font-family:'IBM Plex Mono',monospace">/10</span></div>
-      <div><span class="sig-status ${stcls}">${stlbl}</span></div>
-      <div class="sig-ready-bar"><div class="ready-fill" style="background:${bestScore>=7?'var(--accent)':bestScore>=5?'var(--gold)':'var(--danger)'};width:${bestScore*10}%"></div><span style="font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace">%${bestScore*10}</span></div>
-      <div style="font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace">${isLong?'L:'+sig.long?.score:isShort?'S:'+sig.short?.score:'L:'+longScore+' S:'+shortScore}</div>
+    const inPos   = sig.in_position;
+
+    let stlbl, stcls;
+    if(inPos)            { stlbl='AKTİF';      stcls='st-active'; }
+    else if(isLong||isShort){ stlbl='SİNYAL';  stcls='st-active';   readyCount++; }
+    else if(bestScore>=9){ stlbl='YAKLAŞIYOR'; stcls='st-approach'; approachCount++; }
+    else                 { stlbl='İZLEME';     stcls='st-watch'; }
+
+    const color = bestScore>=9?'var(--accent)':bestScore>=7?'var(--gold)':'var(--danger)';
+    const lp    = _livePrices[sym] || 0;
+    const dir   = isLong?'LONG':isShort?'SHORT':'--';
+    const dirColor = isLong?'var(--accent)':isShort?'var(--danger)':'var(--dim)';
+
+    // Koşul ikonları — long.reason'dan parse et
+    const reason = sig.long?.reason || '';
+    const checks = {
+      trend:    reason.includes('✓ Trend'),
+      pullback: reason.includes('✓ Pullback'),
+      momentum: reason.includes('✓ Momentum'),
+      volume:   reason.includes('✓ Hacim'),
+      vwap:     reason.includes('✓ VWAP'),
+      mtf5:     reason.includes('✓ 5dk'),
+      mtf15:    reason.includes('✓ 15dk'),
+      session:  reason.includes('✓') && !reason.includes('⚠ Düşük'),
+    };
+    const ck = (ok,lbl) => `<span style="font-size:9px;padding:1px 5px;border-radius:3px;margin-right:2px;font-family:'IBM Plex Mono',monospace;background:${ok?'#00ffaa18':'#ff335518'};color:${ok?'var(--accent)':'var(--danger)'};border:1px solid ${ok?'#00ffaa25':'#ff335525'}">${ok?'✓':'✗'} ${lbl}</span>`;
+
+    return`<div class="sig-row" style="display:block;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="selectCoin('${sym}')">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
+        <div style="display:flex;align-items:center;gap:8px">
+          <span class="sig-dot" style="background:${bestScore>=9?'var(--accent)':bestScore>=7?'var(--gold)':'var(--dim)'}"></span>
+          <span style="font-size:13px;font-weight:600;font-family:'IBM Plex Mono',monospace">${sym.replace('USDT','')}</span>
+          <span style="font-size:10px;color:var(--dim)">${lp>0?'$'+lp.toLocaleString():''}</span>
+          <span style="font-size:10px;font-weight:600;color:${dirColor};font-family:'IBM Plex Mono',monospace">${dir}</span>
+        </div>
+        <div style="display:flex;align-items:center;gap:8px">
+          <span style="font-size:16px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:${color}">${bestScore}</span>
+          <span style="font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace">/11</span>
+          <span class="sig-status ${stcls}">${stlbl}</span>
+        </div>
+      </div>
+      <div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px">
+        ${ck(checks.trend,'Trend')}${ck(checks.pullback,'Pullback')}${ck(checks.momentum,'Momentum')}${ck(checks.volume,'Hacim')}${ck(checks.vwap,'VWAP')}${ck(checks.mtf5,'5dk')}${ck(checks.mtf15,'15dk')}
+      </div>
+      <div style="display:flex;align-items:center;gap:6px">
+        <div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden">
+          <div style="height:100%;border-radius:2px;background:${color};width:${Math.min(100,bestScore/11*100)}%"></div>
+        </div>
+        <span style="font-size:9px;color:var(--dim);font-family:'IBM Plex Mono',monospace">%${Math.round(bestScore/11*100)}</span>
+      </div>
+      ${isLong&&sig.long?.sl?`<div style="font-size:9px;color:var(--dim);margin-top:4px;font-family:'IBM Plex Mono',monospace">Giriş: $${(+sig.long.entry).toFixed(4)} · SL: $${(+sig.long.sl).toFixed(4)} · TP: $${(+sig.long.tp).toFixed(4)}</div>`:''}
     </div>`;
   }).join('');
-  document.getElementById('si-ready').textContent = readyCount;
+
+  document.getElementById('si-ready').textContent    = readyCount;
   document.getElementById('si-approach').textContent = approachCount;
-  document.getElementById('si-active').textContent = _positions.filter(p=>!p.is_adopted).length;
+  document.getElementById('si-active').textContent   = _positions.filter(p=>!p.is_adopted).length;
   document.getElementById('si-shortlist').textContent = coins.length;
   const openPnl = _positions.reduce((a,p)=>a+(+(p.pnl||0)),0);
-  const pnlEl = document.getElementById('si-pnl');
-  pnlEl.textContent = fD(openPnl);
-  pnlEl.style.color = openPnl>=0?'var(--accent)':'var(--danger)';
+  const pnlEl   = document.getElementById('si-pnl');
+  pnlEl.textContent  = fD(openPnl);
+  pnlEl.style.color  = openPnl>=0?'var(--accent)':'var(--danger)';
+
+  // Detay paneli — seçili coin
+  renderCoinDetail(_selectedCoin || coins[0], sigs);
+}
+
+let _selectedCoin = null;
+function selectCoin(sym) {
+  _selectedCoin = sym;
+  renderCoinDetail(sym, _signals);
+}
+
+function renderCoinDetail(sym, sigs) {
+  if(!sym || !sigs[sym]) return;
+  const sig    = sigs[sym];
+  const reason = sig.long?.reason || '';
+  const lines  = reason.split(' | ');
+  const panel  = document.getElementById('sdp-indicators');
+  const title  = document.getElementById('sdp-title');
+  if(title) title.textContent = sym.replace('USDT','') + ' — Giriş Koşulları';
+
+  panel.innerHTML = lines.map(l => {
+    const ok  = l.startsWith('✓');
+    const warn= l.startsWith('⚠');
+    const color = ok?'var(--accent)':warn?'var(--gold)':'var(--danger)';
+    return`<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);font-size:10px">
+      <span style="color:${color};flex-shrink:0;font-size:11px">${ok?'✓':warn?'⚠':'✗'}</span>
+      <span style="color:${ok?'var(--text)':warn?'var(--gold)':'var(--dim)'};font-family:'IBM Plex Mono',monospace;line-height:1.4">${l.replace(/^[✓✗⚠]\s*/,'')}</span>
+    </div>`;
+  }).join('');
+
+  // Detay panel başlığına coin ekle
+  const coinsEl = document.getElementById('sdp-coins');
+  if(coinsEl) {
+    coinsEl.innerHTML = Object.keys(sigs).map(s => {
+      const sc = Math.max(sigs[s]?.long?.score||0, sigs[s]?.short?.score||0);
+      const col = sc>=9?'var(--accent)':sc>=7?'var(--gold)':'var(--dim)';
+      return`<div class="sdp-coin" onclick="selectCoin('${s}')" style="${s===sym?'background:var(--s2)':''}">
+        <span class="sdp-coin-sym" style="color:${s===sym?'var(--accent)':'var(--text)'}">${s.replace('USDT','')}</span>
+        <span class="sdp-coin-score" style="color:${col}">${sc}<small style="color:var(--dim);font-size:9px">/11</small></span>
+      </div>`;
+    }).join('');
+  }
 }
 
 async function loadHistory() {
