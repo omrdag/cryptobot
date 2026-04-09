@@ -165,48 +165,141 @@ def set_leverage(inst_id: str, lev: int):
     })
 
 
-def place_order(inst_id: str, side: str, notional: float, price: float) -> bool:
+def get_contract_info(inst_id: str) -> dict:
+    """Kontrat bilgilerini al ve önbellekte tut."""
+    if not hasattr(get_contract_info, "_cache"):
+        get_contract_info._cache = {}
+    if inst_id not in get_contract_info._cache:
+        info_data = _okx_get(f"/api/v5/public/instruments?instType=SWAP&instId={inst_id}")
+        try:
+            d = info_data["data"][0]
+            get_contract_info._cache[inst_id] = {
+                "ct_val":   float(d.get("ctVal", 0.01)),
+                "lot_sz":   float(d.get("lotSz", 1)),
+                "tick_sz":  float(d.get("tickSz", 0.01)),
+                "min_sz":   float(d.get("minSz", 1)),
+            }
+        except:
+            get_contract_info._cache[inst_id] = {"ct_val": 0.01, "lot_sz": 1, "tick_sz": 0.01, "min_sz": 1}
+    return get_contract_info._cache[inst_id]
+
+
+def round_price(price: float, tick_sz: float) -> str:
+    """Fiyatı OKX tick size'a göre yuvarla."""
+    if tick_sz <= 0:
+        return f"{price:.4f}"
+    decimals = max(0, -int(f"{tick_sz:e}".split("e")[1]))
+    return f"{round(price / tick_sz) * tick_sz:.{decimals}f}"
+
+
+def place_order(inst_id: str, side: str, notional: float, price: float,
+                sl_price: float = 0.0, tp1_price: float = 0.0, tp2_price: float = 0.0) -> bool:
     """
-    Market emri gönder.
+    Market emri + OKX'e gerçek SL/TP algo emirleri gönder.
+    - SL: hard stop loss (OKX'te anlık tetiklenir)
+    - TP1: %50 kısmi kâr alma (breakeven'e geçer)
+    - TP2: kalan %50 tam çıkış
     side: "buy" (long aç) veya "sell" (short aç)
     """
     if PAPER_TRADING:
-        _log(f"[PAPER] {side.upper()} {inst_id} notional=${notional:.0f} @ ${price:.4f}")
+        _log(f"[PAPER] {side.upper()} {inst_id} notional=${notional:.0f} @ ${price:.4f} | SL=${sl_price:.4f} TP1=${tp1_price:.4f} TP2=${tp2_price:.4f}")
         return True
 
     if not OKX_KEY:
         _log("API anahtarı yok, emir gönderilemedi", "error")
         return False
 
-    # Kontrat büyüklüğünü al
-    info_data = _okx_get(f"/api/v5/public/instruments?instType=SWAP&instId={inst_id}")
-    try:
-        ct_val = float(info_data["data"][0]["ctVal"])  # 1 kontrat = kaç coin
-    except:
-        ct_val = 0.01  # BTC varsayılan
+    info = get_contract_info(inst_id)
+    ct_val  = info["ct_val"]
+    tick_sz = info["tick_sz"]
 
-    qty_coin     = notional / price          # Coin miktarı
-    qty_contract = qty_coin / ct_val        # Kontrat sayısı
-    qty_contract = max(1, round(qty_contract))  # Minimum 1 kontrat
+    qty_coin     = notional / price
+    qty_contract = max(info["min_sz"], round(qty_coin / ct_val))
+    pos_side     = "long" if side == "buy" else "short"
 
-    pos_side = "long" if side == "buy" else "short"
-
+    # ── 1. Ana market emri ────────────────────────────────────────────────────
     body = {
         "instId":  inst_id,
         "tdMode":  "cross",
         "side":    side,
         "posSide": pos_side,
         "ordType": "market",
-        "sz":      str(qty_contract),
+        "sz":      str(int(qty_contract)),
     }
 
     result = _okx_post("/api/v5/trade/order", body)
     ok = result.get("code") == "0"
-    if ok:
-        _log(f"✅ Emir onaylandı: {side.upper()} {inst_id} {qty_contract} kontrat")
-    else:
+    if not ok:
         _log(f"❌ Emir reddedildi: {inst_id} → {result.get('msg','?')}", "error")
-    return ok
+        return False
+
+    order_id = result.get("data", [{}])[0].get("ordId", "")
+    _log(f"✅ {side.upper()} {inst_id} {int(qty_contract)} kontrat | ordId={order_id}")
+
+    # ── 2. SL algo emri (tüm pozisyon) ───────────────────────────────────────
+    if sl_price > 0:
+        sl_side  = "sell" if pos_side == "long" else "buy"
+        sl_body  = {
+            "instId":     inst_id,
+            "tdMode":     "cross",
+            "side":       sl_side,
+            "posSide":    pos_side,
+            "ordType":    "conditional",
+            "sz":         str(int(qty_contract)),
+            "slTriggerPx": round_price(sl_price, tick_sz),
+            "slOrdPx":     "-1",   # market fiyatı
+            "slTriggerPxType": "mark",
+        }
+        sl_result = _okx_post("/api/v5/trade/order-algo", sl_body)
+        if sl_result.get("code") == "0":
+            _log(f"🛡️ SL ayarlandı: ${sl_price:.4f}")
+        else:
+            _log(f"⚠️ SL ayarlanamadı: {sl_result.get('msg','?')}", "warning")
+
+    # ── 3. TP1 — %50 kısmi kâr alma ──────────────────────────────────────────
+    if tp1_price > 0:
+        tp1_qty  = max(1, int(qty_contract * 0.50))  # %50
+        tp1_side = "sell" if pos_side == "long" else "buy"
+        tp1_body = {
+            "instId":     inst_id,
+            "tdMode":     "cross",
+            "side":       tp1_side,
+            "posSide":    pos_side,
+            "ordType":    "conditional",
+            "sz":         str(tp1_qty),
+            "tpTriggerPx": round_price(tp1_price, tick_sz),
+            "tpOrdPx":     "-1",
+            "tpTriggerPxType": "mark",
+        }
+        tp1_result = _okx_post("/api/v5/trade/order-algo", tp1_body)
+        if tp1_result.get("code") == "0":
+            _log(f"🎯 TP1 ayarlandı: ${tp1_price:.4f} (%50 kapat)")
+        else:
+            _log(f"⚠️ TP1 ayarlanamadı: {tp1_result.get('msg','?')}", "warning")
+
+    # ── 4. TP2 — kalan %50 tam çıkış ─────────────────────────────────────────
+    if tp2_price > 0:
+        tp2_qty  = int(qty_contract) - (max(1, int(qty_contract * 0.50)))
+        if tp2_qty > 0:
+            tp2_side = "sell" if pos_side == "long" else "buy"
+            tp2_body = {
+                "instId":     inst_id,
+                "tdMode":     "cross",
+                "side":       tp2_side,
+                "posSide":    pos_side,
+                "ordType":    "conditional",
+                "sz":         str(tp2_qty),
+                "tpTriggerPx": round_price(tp2_price, tick_sz),
+                "tpOrdPx":     "-1",
+                "tpTriggerPxType": "mark",
+            }
+            tp2_result = _okx_post("/api/v5/trade/order-algo", tp2_body)
+            if tp2_result.get("code") == "0":
+                _log(f"🎯 TP2 ayarlandı: ${tp2_price:.4f} (kalan kapat)")
+            else:
+                _log(f"⚠️ TP2 ayarlanamadı: {tp2_result.get('msg','?')}", "warning")
+
+    return True
 
 
 def close_position(inst_id: str, side: str, qty: float):
@@ -414,10 +507,15 @@ def bot_loop():
                 # Long sinyali
                 if sig["long"]["enter"] and sig["long"]["entry"]:
                     price = sig["long"]["entry"]
-                    sl    = sig["long"]["sl"]
-                    tp    = sig["long"]["tp"]
-                    _log(f"🟢 {sym} LONG aç | Puan:{sig['long']['score']}/10 | Giriş:${price:.4f} SL:${sl:.4f} TP:${tp:.4f}")
-                    ok = place_order(inst_id, "buy", SLOT_NOTIONAL, price)
+                    sl    = sig["long"]["sl"] or price * (1 - 0.012)
+                    tp    = sig["long"]["tp"] or price * (1 + 0.018)
+                    # Kısmi TP sistemi
+                    risk  = price - sl
+                    tp1   = price + risk * 1.0   # 1R kâr → TP1 (%50 kapat)
+                    tp2   = price + risk * 2.0   # 2R kâr → TP2 (kalan kapat)
+                    _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/10 | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
+                    ok = place_order(inst_id, "buy", SLOT_NOTIONAL, price,
+                                     sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
                         with _lock:
                             engine_state["open_positions"][sym] = {
@@ -438,10 +536,14 @@ def bot_loop():
                 # Short sinyali (yalnızca long yoksa)
                 elif sig["short"]["enter"] and sig["short"]["entry"]:
                     price = sig["short"]["entry"]
-                    sl    = sig["short"]["sl"]
-                    tp    = sig["short"]["tp"]
-                    _log(f"🔴 {sym} SHORT aç | Puan:{sig['short']['score']}/10 | Giriş:${price:.4f} SL:${sl:.4f} TP:${tp:.4f}")
-                    ok = place_order(inst_id, "sell", SLOT_NOTIONAL, price)
+                    sl    = sig["short"]["sl"] or price * (1 + 0.012)
+                    tp    = sig["short"]["tp"] or price * (1 - 0.018)
+                    risk  = sl - price
+                    tp1   = price - risk * 1.0   # 1R kâr → TP1
+                    tp2   = price - risk * 2.0   # 2R kâr → TP2
+                    _log(f"🔴 {sym} SHORT | Puan:{sig['short']['score']}/10 | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
+                    ok = place_order(inst_id, "sell", SLOT_NOTIONAL, price,
+                                     sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
                         with _lock:
                             engine_state["open_positions"][sym] = {
