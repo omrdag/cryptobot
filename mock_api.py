@@ -78,10 +78,13 @@ def refresh_all():
                 entry   = float(p.get("avgPx", 0))
                 current = _prices.get(sym, entry)
                 lev     = int(float(p.get("lever", 10)))
-                pnl     = float(p.get("upl", 0))
-                margin  = float(p.get("margin", 0))
-                notional= float(p.get("notionalUsd", 0))
+                pnl     = float(p.get("upl", 0) or 0)
+                margin  = float(p.get("margin", 0) or 0)
+                notional= float(p.get("notionalUsd", 0) or 0)
                 # PnL % = pnl / margin * 100 (marjin üzerinden gerçek oran)
+                # Eğer margin=0 ise notional/leverage ile hesapla
+                if margin <= 0 and notional > 0:
+                    margin = notional / lev
                 pnl_p   = round((pnl / margin * 100) if margin > 0 else 0.0, 2)
                 is_manual = sym not in ALLOWED_COINS
 
