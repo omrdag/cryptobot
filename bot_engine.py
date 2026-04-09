@@ -356,6 +356,19 @@ def bot_loop():
     """Ana bot döngüsü — her LOOP_SECONDS saniyede çalışır."""
     _log(f"Bot motoru başlatıldı | Paper={PAPER_TRADING} | Kaldıraç={LEVERAGE}x | Coinler={list(COIN_MAP.values())}")
 
+    # DB başlat
+    db = None
+    try:
+        import db_manager as _db
+        if _db.init_db():
+            db = _db
+            _log("PostgreSQL bağlantısı kuruldu")
+    except Exception as e:
+        _log(f"DB başlatılamadı (devam edilecek): {e}", "warning")
+
+    # trade_id takibi: symbol → db trade id
+    _trade_ids: Dict[str, int] = {}
+
     # Kaldıraç ayarla
     for inst_id in COINS:
         set_leverage(inst_id, LEVERAGE)
@@ -415,6 +428,12 @@ def bot_loop():
                                 "score": sig["long"]["score"],
                             }
                         open_count += 1
+                        if db:
+                            tid = db.open_trade(sym, "long", price, sl, tp, SLOT_NOTIONAL,
+                                                sig["long"]["score"], "Pullback Long",
+                                                "paper" if PAPER_TRADING else "live")
+                            if tid:
+                                _trade_ids[sym] = tid
 
                 # Short sinyali (yalnızca long yoksa)
                 elif sig["short"]["enter"] and sig["short"]["entry"]:
@@ -433,6 +452,12 @@ def bot_loop():
                                 "score": sig["short"]["score"],
                             }
                         open_count += 1
+                        if db:
+                            tid = db.open_trade(sym, "short", price, sl, tp, SLOT_NOTIONAL,
+                                                sig["short"]["score"], "Pullback Short",
+                                                "paper" if PAPER_TRADING else "live")
+                            if tid:
+                                _trade_ids[sym] = tid
 
         except Exception as e:
             _log(f"Döngü hatası: {e}", "error")
