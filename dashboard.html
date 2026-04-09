@@ -480,7 +480,7 @@ function renderPositions(positions, gridId, cntId) {
     const coinColors = {BTC:'#f7931a',ETH:'#627eea',SOL:'#9945ff',BNB:'#f0b90b',AVAX:'#e84142'};
     const coinC = coinColors[sym] || '#8b949e';
 
-    return`<div style="background:var(--s1);border:1px solid ${win?'#00ffaa18':'#ff335518'};border-top:2px solid ${win?'#00ffaa':'#ff3355'};border-radius:10px;padding:14px;transition:all .2s;position:relative;overflow:hidden">
+    return`<div style="background:var(--s1);border:1px solid ${win?"#00ffaa18":"#ff335518"};border-top:2px solid ${win?"#00ffaa":"#ff3355"};border-radius:10px;padding:14px;transition:all .2s;position:relative;overflow:hidden">
       <div style="position:absolute;top:0;right:0;width:80px;height:80px;background:${coinC}06;border-radius:0 0 0 80px;pointer-events:none"></div>
 
       <div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">
@@ -515,7 +515,7 @@ function renderPositions(positions, gridId, cntId) {
         </div>
         <div style="background:#ffffff05;border-radius:6px;padding:7px 10px;border:1px solid var(--border)">
           <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Güncel</div>
-          <div style="font-size:12px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:${il?'#00ffaa':'#ff3355'}">$${cur.toLocaleString(undefined,{maximumFractionDigits:cur>100?1:4})}</div>
+          <div style="font-size:12px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:${il?"#00ffaa":"#ff3355"}">$${cur.toLocaleString(undefined,{maximumFractionDigits:cur>100?1:4})}</div>
         </div>
         <div style="background:#ffffff05;border-radius:6px;padding:7px 10px;border:1px solid var(--border)">
           <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Marjin</div>
