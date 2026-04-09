@@ -245,49 +245,61 @@ def get_trades():
     except Exception:
         pass
 
-    # 2. OKX geçmiş işlemleri (son 50)
+    # 2. OKX geçmiş işlemleri — orders-history (her işlem tek satır)
     if OKX_KEY:
         try:
-            okx_data = _okx_get("/api/v5/trade/fills?instType=SWAP&limit=50")
-            okx_fills = okx_data.get("data", [])
+            okx_data = _okx_get("/api/v5/trade/orders-history?instType=SWAP&limit=50&state=filled")
+            okx_orders = okx_data.get("data", [])
 
-            # OKX fill'lerini trade formatına çevir
-            seen_ids = {t.get("exchange_order_id") for t in all_trades if t.get("exchange_order_id")}
-            for f in okx_fills:
-                order_id = f.get("ordId", "")
-                if order_id in seen_ids:
-                    continue  # DB'de zaten var
+            seen_ids = {str(t.get("exchange_order_id","")) for t in all_trades if t.get("exchange_order_id")}
 
-                inst_id = f.get("instId", "")
-                sym = inst_id.replace("-USDT-SWAP","USDT").replace("-USDT","USDT").replace("-","")
-                side_raw = f.get("side", "buy")
-                pos_side = f.get("posSide", "long")
-                price = float(f.get("fillPx", 0) or 0)
-                qty   = float(f.get("fillSz", 0) or 0)
-                fee   = float(f.get("fee", 0) or 0)
-                ts_ms = int(f.get("ts", 0) or 0)
-                ts_str = datetime.utcfromtimestamp(ts_ms/1000).isoformat() if ts_ms else None
+            for o in okx_orders:
+                order_id = o.get("ordId", "")
+                if str(order_id) in seen_ids:
+                    continue
 
-                # PnL: OKX fills'de pnl alanı var
-                pnl = float(f.get("pnl", 0) or 0)
+                inst_id  = o.get("instId", "")
+                sym      = inst_id.replace("-USDT-SWAP","USDT").replace("-USDT","USDT").replace("-","")
+                pos_side = o.get("posSide", "long")   # "long" / "short"
+                side_raw = o.get("side", "buy")        # "buy" / "sell"
+                avg_px   = float(o.get("avgPx", 0) or 0)
+                sz       = float(o.get("accFillSz", 0) or 0)
+                pnl      = float(o.get("pnl", 0) or 0)
+                fee      = float(o.get("fee", 0) or 0)
+                ts_ms    = int(o.get("fillTime", 0) or o.get("cTime", 0) or 0)
+                ts_str   = datetime.utcfromtimestamp(ts_ms/1000).isoformat() if ts_ms else None
+                notional = avg_px * sz
+
+                # Sadece kapatma emirlerini göster (pnl != 0 veya side=sell/buy kapanış)
+                # posSide=long + side=sell → long kapanış
+                # posSide=short + side=buy → short kapanış
+                is_close = (pos_side=="long" and side_raw=="sell") or \
+                           (pos_side=="short" and side_raw=="buy")
+                is_open  = (pos_side=="long" and side_raw=="buy") or \
+                           (pos_side=="short" and side_raw=="sell")
+
+                if not (is_close or is_open):
+                    continue
 
                 all_trades.append({
-                    "id": None,
-                    "symbol": sym,
-                    "side": pos_side,
-                    "entry_price": price,
-                    "exit_price": price if side_raw in ("sell","buy") else None,
-                    "pnl": pnl,
-                    "pnl_pct": 0.0,
-                    "strategy": "OKX",
-                    "mode": "live",
-                    "status": "closed",
-                    "opened_at": ts_str,
-                    "closed_at": ts_str,
-                    "exit_reason": side_raw,
-                    "score": 0,
-                    "source": "okx",
+                    "id":               None,
+                    "symbol":           sym,
+                    "side":             pos_side,
+                    "entry_price":      avg_px,
+                    "exit_price":       avg_px if is_close else None,
+                    "pnl":              round(pnl + fee, 4),
+                    "pnl_pct":          round(pnl / (notional / 10) * 100, 2) if notional > 0 else 0,
+                    "strategy":         "OKX",
+                    "mode":             "live",
+                    "status":           "closed" if is_close else "open",
+                    "opened_at":        ts_str,
+                    "closed_at":        ts_str if is_close else None,
+                    "exit_reason":      "take_profit" if pnl > 0 else ("stop_loss" if pnl < 0 else side_raw),
+                    "score":            0,
+                    "source":           "okx",
                     "exchange_order_id": order_id,
+                    "quantity":         sz,
+                    "notional":         round(notional, 2),
                 })
         except Exception:
             pass
