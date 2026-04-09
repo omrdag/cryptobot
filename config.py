@@ -371,7 +371,7 @@ SLOT_QUALITY_SCORE_THRESHOLDS = {
 }
 
 # Bu skorun altındaki sinyaller için işlem açılmaz (izleme modu)
-SLOT_ENTRY_MIN_SCORE = 65   # Gevşetildi: eski=75, şimdi C kalite sinyaller de girer
+SLOT_ENTRY_MIN_SCORE = 70   # 70 altı reddedilir, 70-74 izleme (C kalite işlem açmaz)
 
 # ═══════════════════════════════════════════════════════════════
 # PULLBACK SHORT STRATEJİSİ
@@ -383,13 +383,13 @@ USE_PULLBACK_SHORT_STRATEGY = True
 # Short stratejisinin aktif olduğu piyasa rejimleri
 # "BEAR_TREND"  → ana hedef: ≥60% coin DOWN trendde
 # "MIXED"       → isteğe bağlı, yalnızca yüksek kalite shortlara izin verilir
-PULLBACK_SHORT_ACTIVE_REGIMES = ["BEAR_TREND", "RANGING", "MIXED"]  # Daha fazla rejimde short
+PULLBACK_SHORT_ACTIVE_REGIMES = ["BEAR_TREND", "TRENDING_DOWN"]  # Sadece net düşüş rejimlerinde short
 
 # Short strateji minimum teknik puan (10 üzerinden)
 PULLBACK_SHORT_MIN_SCORE = 6   # Gevşetildi: eski=7, daha fazla short sinyali
 
 # Short için minimum kalite seviyesi (slot sistemi ile entegre)
-PULLBACK_SHORT_MIN_QUALITY = "C"   # C ve üstü — gevşetildi (eski: "B")
+PULLBACK_SHORT_MIN_QUALITY = "B"   # Short için min B (skor≥75) — C kalite short çok riskli
 
 # ═══════════════════════════════════════════════════════════════
 # UZUN/KISA REJİM + YÖN FİLTRELERİ (PATCH-5)
@@ -522,21 +522,21 @@ LARGE_LOT_STANDARD_NOTIONAL = 2500.0  # A/A+ kalite için standart large lot not
 #         TP2 +%1.8 (kalan %50 kapat) | trailing %0.5 runner koruma
 #
 # ─── Birleşik Profil (B+ / A / A+) — dengeli kâr koruma ────────────────────
-LARGE_LOT_BPLUS_TP1_PCT      = 0.008   # %0.8 → 1. kısmi çıkış (erken kâr al)
-LARGE_LOT_BPLUS_TP1_SIZE     = 0.50    # %50 kapatılır
-LARGE_LOT_BPLUS_TP2_PCT      = 0.018   # %1.8 → 2. kısmi çıkış (runner nihai hedef)
-LARGE_LOT_BPLUS_TP2_SIZE     = 0.50    # %50 daha kapatılır → pozisyon tamamen kapanır
-# Runner = 1 - 0.50 - 0.50 = %0 → TP2 sonrası tamamen kapanır
-LARGE_LOT_BPLUS_TRAILING_PCT = 0.005   # %0.5 trailing stop (sıkı koruma)
+LARGE_LOT_BPLUS_TP1_PCT      = 0.012   # %1.2 → 1. kısmi çıkış (erken kâr al)
+LARGE_LOT_BPLUS_TP1_SIZE     = 0.40    # %40 kapatılır
+LARGE_LOT_BPLUS_TP2_PCT      = 0.030   # %3.0 → 2. kısmi çıkış (runner nihai hedef)
+LARGE_LOT_BPLUS_TP2_SIZE     = 0.60    # %60 daha kapatılır → pozisyon tamamen kapanır
+# Runner = 1 - 0.40 - 0.60 = %0 → TP2 sonrası tamamen kapanır
+LARGE_LOT_BPLUS_TRAILING_PCT = 0.008   # %0.8 trailing stop (biraz daha geniş)
 
 # ─── A / A+ — birleşik profil (BPLUS ile aynı) ─────────────────────────────
 # Tanımlar korunuyor; runtime main.py yalnızca BPLUS_* kullanır.
-LARGE_LOT_AA_TP1_PCT         = 0.008   # %0.8 → 1. kısmi çıkış
-LARGE_LOT_AA_TP1_SIZE        = 0.50    # %50 kapatılır
-LARGE_LOT_AA_TP2_PCT         = 0.018   # %1.8 → 2. kısmi çıkış
-LARGE_LOT_AA_TP2_SIZE        = 0.50    # %50 daha kapatılır → pozisyon tamamen kapanır
-# Runner = 1 - 0.50 - 0.50 = %0 → TP2 sonrası tamamen kapanır
-LARGE_LOT_AA_TRAILING_PCT    = 0.005   # %0.5 trailing stop
+LARGE_LOT_AA_TP1_PCT         = 0.012   # %1.2 → 1. kısmi çıkış
+LARGE_LOT_AA_TP1_SIZE        = 0.40    # %40 kapatılır
+LARGE_LOT_AA_TP2_PCT         = 0.030   # %3.0 → 2. kısmi çıkış
+LARGE_LOT_AA_TP2_SIZE        = 0.60    # %60 daha kapatılır → pozisyon tamamen kapanır
+# Runner = 1 - 0.40 - 0.60 = %0 → TP2 sonrası tamamen kapanır
+LARGE_LOT_AA_TRAILING_PCT    = 0.008   # %0.8 trailing stop
 
 # ═══════════════════════════════════════════════════════════════
 # PATCH-1: Time-Exit Hard Cap — Mutlak Üst Bar Sınırı
@@ -576,7 +576,7 @@ LARGE_LOT_RANGING_MIN_QUALITY = "A+"
 # Mevcut MIN_ECONOMIC_NOTIONAL (sizing/teorik) değerinden AYRI ve
 # daha kapsamlı bir filtredir.
 # ─────────────────────────────────────────────────────────────
-MIN_ECONOMIC_FILLED_NOTIONAL = 900.0   # USDT — gerçek fill notional minimum ($100 marjin × 10x = $1000, %90 tolerans)
+MIN_ECONOMIC_FILLED_NOTIONAL = 750.0   # USDT — gerçek fill notional minimum (%75 tolerans, slippage payı bırakıldı)
 
 # ═══════════════════════════════════════════════════════════════
 # PATCH-4: Aynı Coin Yeniden Giriş Soğuma Süresi
@@ -584,4 +584,4 @@ MIN_ECONOMIC_FILLED_NOTIONAL = 900.0   # USDT — gerçek fill notional minimum 
 # Bir pozisyon kapandıktan sonra aynı coin için yeniden giriş
 # bu süre kadar ertelenir. Daha önce 300 sn (5 dk) idi.
 # ─────────────────────────────────────────────────────────────
-SAME_COIN_REENTRY_COOLDOWN_SEC = 600   # 10 dakika (eski: 300 = 5 dk)
+SAME_COIN_REENTRY_COOLDOWN_SEC = 900   # 15 dakika — SL sonrası aynı coinde acele giriş engeli
