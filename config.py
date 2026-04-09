@@ -1,18 +1,3 @@
-# ═══════════════════════════════════════════════════════════════
-# SCALPING MOD v1 — Optimize Edilmiş Parametreler
-# ═══════════════════════════════════════════════════════════════
-# Değişiklikler (orijinal → scalping):
-#   KLINE_INTERVAL    : 1h → 1m       (scalping timeframe)
-#   STOP_LOSS_PCT     : 2.0% → 0.3%   (dar SL)
-#   TAKE_PROFIT_PCT   : 4.0% → 0.5%   (küçük hedef, sık kazanç)
-#   BREAKEVEN_TRIGGER : 0.8% → 0.2%   (erken kilitle)
-#   MAX_BARS          : 6 → 10         (10 dakika max)
-#   LARGE_LOT         : True → False   (scalping'de kapalı)
-#   MAX_OPEN_POS      : 5 → 3          (odak)
-#   LOOP_INTERVAL     : 60s → 30s      (hızlı tarama)
-#   COOLDOWN          : 10dk → 2dk     (hızlı re-entry)
-# ═══════════════════════════════════════════════════════════════
-
 """
 Merkezi Yapılandırma — Crypto Trading Bot v3
 =============================================
@@ -35,19 +20,19 @@ BINANCE_API_SECRET = os.getenv("BINANCE_API_SECRET", "")
 # ═══════════════════════════════════════════════════════════════
 PAPER_TRADING        = os.getenv("PAPER_TRADING", "true").lower() != "false"
 INITIAL_BALANCE_USDT = float(os.getenv("INITIAL_BALANCE_USDT", "10000"))
-LOOP_INTERVAL_SECONDS = 30   # Scalping: 30 saniyede bir tarama
+LOOP_INTERVAL_SECONDS = 60
 
 # ═══════════════════════════════════════════════════════════════
 # İŞLEM ÇİFTLERİ ve ZAMAN DİLİMİ
 # ═══════════════════════════════════════════════════════════════
-TRADING_PAIRS = [  # Scalping v1 — likit büyük coinler
+TRADING_PAIRS = [
     "BTCUSDT",
     "ETHUSDT",
     "BNBUSDT",
 ]
 
-KLINE_INTERVAL = "1m"   # Scalping: 1 dakikalık mumlar
-KLINE_LIMIT    = 200   # Scalping için 200 bar yeterli     # Daha fazla veri → daha iyi indikatörler (min 205 bar gerekir)
+KLINE_INTERVAL = "1h"
+KLINE_LIMIT    = 300     # Daha fazla veri → daha iyi indikatörler (min 205 bar gerekir)
 
 # ═══════════════════════════════════════════════════════════════
 # AKTİF STRATEJİ
@@ -80,7 +65,7 @@ ATR_SL_MULTIPLIER = 2.5   # Geniş stop loss — 1H sinyal için nefes alanı
 ATR_TP_MULTIPLIER = 4.0   # v2: TP uzatıldı → RR = 1.6x (2.5SL : 4.0TP)
 
 # v2: ADX minimum eşiği — trend olmadan BUY/SELL engellenir
-ADX_MIN_THRESHOLD = 15.0   # Scalping: 15 ADX yeterli (1m mumlar daha gürültülü)
+ADX_MIN_THRESHOLD = 18.0
 
 # v2: Kapı sistemi minimum puan (10 üzerinden)
 GATE_MIN_SCORE    = 6
@@ -156,8 +141,8 @@ TRADE_AMOUNT_PCT     = 0.10
 TRADE_AMOUNT      = 100.0   # Sabit mod (USDT) veya oran (%)
 TRADE_AMOUNT_TYPE = "auto"  # Varsayılan: otomatik bölüştürme
 
-STOP_LOSS_PCT   = 0.003   # Scalping: %0.3 dar SL
-TAKE_PROFIT_PCT = 0.005   # Scalping: %0.5 TP (RR 1.67x)
+STOP_LOSS_PCT   = 0.02
+TAKE_PROFIT_PCT = 0.04
 
 # ═══════════════════════════════════════════════════════════════
 # POZİSYON ROTASYONU
@@ -169,34 +154,34 @@ ROTATION_MIN_SCORE = 78
 # SMART EXIT — Kısmi TP + Breakeven + Trailing + Zaman Bazlı
 # ═══════════════════════════════════════════════════════════════
 # Breakeven: +BREAKEVEN_TRIGGER_PCT kârda SL giriş fiyatına çekilir
-BREAKEVEN_TRIGGER_PCT     = 0.2    # Scalping: %+0.2 kârda BE — hızlı kilitle
+BREAKEVEN_TRIGGER_PCT     = 0.8    # %+0.8 kâr → SL breakeven'e taşı (agresif: daha erken)
 BREAKEVEN_OFFSET_PCT      = 0.1    # Breakeven + %0.1 küçük pozitif offset
 
 # Kısmi TP: TP1'de pozisyonun TAMAMI kapatılır (runner yok — hızlı kâr yakalama modu)
-PARTIAL_TP1_PCT           = 0.3    # Scalping: %+0.3 → TP1 (%50 kapat)
-PARTIAL_TP1_SIZE          = 50     # Scalping: %50 kapat, runner devam
-PARTIAL_TP2_PCT           = 0.5    # Scalping: %+0.5 → TP2 (kalan %50 kapat)
-PARTIAL_TP2_SIZE          = 50     # Scalping: kalan %50'yi kapat
+PARTIAL_TP1_PCT           = 1.2    # %+1.2 → TP1 tetikle ve tamamını kapat
+PARTIAL_TP1_SIZE          = 100    # Pozisyonun %100'ünü kapat (tam çıkış)
+PARTIAL_TP2_PCT           = 2.8    # (TP1=100 olduğu için artık tetiklenmez)
+PARTIAL_TP2_SIZE          = 0      # Devre dışı
 RUNNER_POSITION_PCT       = 0      # Runner yok — hızlı kâr modu
 
 # Trailing Stop: Runner (%40) için
 TRAILING_STOP_ENABLED     = True
-TRAILING_STOP_PCT         = 0.002  # Scalping: %0.2 sıkı trailing
+TRAILING_STOP_PCT         = 0.01   # %1.0 trailing stop (runner için)
 BREAK_EVEN_ENABLED        = True
 BREAK_EVEN_PCT            = 0.012  # Breakeven trigger (0.012 = %1.2)
 
 # Zaman bazlı çıkış kuralları
-MAX_BARS_IN_TRADE         = 10     # Scalping: 10 × 1m = 10 dakika max
+MAX_BARS_IN_TRADE         = 6      # Maksimum 6 mum (6 × 1h = 6 saat)
 MIN_PROFIT_AFTER_4_BARS   = 0.8    # 4. mumdan sonra %0.8 kâr yoksa kapat
 
 # ── Akıllı Zaman Bazlı Çıkış (Smart Time Exit) ──────────────────────────────
 # Pullback Long strateji için dinamik max bar sistemi.
 # Bot kötü işlemleri hâlâ erken kapatır; iyi işlemlere daha fazla zaman tanır.
-SMART_EXIT_BASE_MAX_BARS      = 10   # Scalping: 10 dakika max
-SMART_EXIT_LARGE_LOT_MAX_BARS = 12   # Scalping large lot: 12 dakika max
+SMART_EXIT_BASE_MAX_BARS      = 8    # Küçük lot: profil max_bars yerine geçer (8 mum)
+SMART_EXIT_LARGE_LOT_MAX_BARS = 10   # Large lot: daha büyük pozisyon = daha fazla süre
 SMART_EXIT_TP1_EXTENSION      = 3    # TP1 tetiklendikten sonra +3 mum ek süre
 SMART_EXIT_BE_EXTENSION       = 2    # Sadece BE tetiklendiyse (TP1 yoksa) +2 mum
-SMART_EXIT_TREND_MAX_BARS     = 15   # Güçlü trend: max 15 dakika
+SMART_EXIT_TREND_MAX_BARS     = 12   # Güçlü trend varsa maksimum uzatılacak mum sayısı
 SMART_EXIT_ADX_STRONG_MIN     = 25   # ADX bu eşiğin üzerindeyse "güçlü trend" sayılır
 SMART_EXIT_DELAY_BARS         = 2    # Hafif pozitif/BE yakını pozisyon için ekstra izin verilen mum sayısı
 SMART_EXIT_DELAY_LOSS_TOL     = 0.003  # Bu eşiğin üstündeyse (%-0.3) seçici gecikmede pozisyon tutulur
@@ -243,7 +228,7 @@ POSITION_TARGET_PULLBACK   = (75.0,  150.0)
 # ═══════════════════════════════════════════════════════════════
 # RİSK YÖNETİMİ
 # ═══════════════════════════════════════════════════════════════
-MAX_OPEN_POSITIONS     = 3   # Scalping: max 3 pozisyon — dikkat dağılmasın
+MAX_OPEN_POSITIONS     = 5
 DAILY_MAX_LOSS_PCT     = 0.05    # %5 günlük max zarar → kill switch
 MAX_TOTAL_OPEN_RISK_PCT= 0.02    # Toplam açık pozisyon riski maks %2 bakiye
 MAX_CONSECUTIVE_LOSS   = 5       # Art arda bu kadar kayıp → durdur
@@ -421,7 +406,7 @@ SHORT_WEAK_REGIMES            = ["RANGING", "MIXED"]
 PULLBACK_SHORT_MIN_SCORE_WEAK = 8       # Zayıf rejimde SHORT min puan (normal=6)
 
 # Yön değiştirme engeli: son kapanıştan bu süre içinde karşı yöne giriş yok
-DIRECTION_FLIP_COOLDOWN_SEC   = 300     # Scalping: 5 dakika yön değişim cooldown
+DIRECTION_FLIP_COOLDOWN_SEC   = 1800    # 30 dakika
 
 # ═══════════════════════════════════════════════════════════════
 # AŞAMA 2 KÂR ALMA MODU (STAGE2)
@@ -515,7 +500,7 @@ FORCE_MAX_SLOT_TEST_MODE = False   # True yapınca max slot notional override ak
 # NOT: LIVE_TEST_MODE aktifken bu mod otomatik devre dışı kalır.
 #      (LIVE_TEST_MODE'da notional=75 USDT sabit)
 # ───────────────────────────────────────────────────────────────
-LARGE_LOT_MODE_ENABLED      = False   # Scalping'de large lot KAPALI — küçük pozisyon, yüksek frekans
+LARGE_LOT_MODE_ENABLED      = True
 LARGE_LOT_MIN_QUALITY       = "A"     # Minimum kalite: A  (skor ≥ 85) — B+ large lot riski azaltmak için yükseltildi
 LARGE_LOT_PREFER_QUALITY    = "A"     # Bu kalite ve üstü → standart notional kullan
 WEAK_VOLUME_MIN_QUALITY       = "B"     # Hacim zayıfken giriş için gereken min kalite (B = skor≥75; gevşetildi — eski: "A"=skor≥85)
@@ -560,8 +545,8 @@ LARGE_LOT_AA_TRAILING_PCT    = 0.005   # %0.5 trailing stop
 # bazı işlemleri aşırı uzatabilir. Bu hard cap buna üst sınır koyar.
 # TP1/BE/Trend uzatmaları bu cap içinde kalacak.
 # ─────────────────────────────────────────────────────────────
-SMART_EXIT_SMALL_LOT_ABS_MAX_BARS = 15   # Scalping: max 15 dakika kesin çıkış
-SMART_EXIT_LARGE_LOT_ABS_MAX_BARS = 20   # Scalping large lot: max 20 dakika
+SMART_EXIT_SMALL_LOT_ABS_MAX_BARS = 120  # Küçük lot: max 120 iterasyon ≈ 4-5 saat (short için yeterli süre)
+SMART_EXIT_LARGE_LOT_ABS_MAX_BARS = 160  # Büyük lot: max 160 iterasyon ≈ 6-7 saat
 
 # ═══════════════════════════════════════════════════════════════
 # PATCH-2: Large Lot Rejim Filtresi
@@ -575,7 +560,13 @@ LARGE_LOT_ALLOWED_REGIMES = [
     "BULL_TREND",
     "TRENDING",
     "BREAKOUT_UP",
+    "RANGING",        # RANGING'de large lot aktif — yalnızca A+ kalite için (LARGE_LOT_RANGING_MIN_QUALITY)
 ]
+
+# RANGING rejiminde large lot için minimum kalite seviyesi.
+# Yatay piyasada breakout riski yüksek olduğundan A+ (skor ≥ 90, gate=10) zorunlu tutulur.
+# A (skor 85-89) ve altı RANGING'de standart slot kullanır.
+LARGE_LOT_RANGING_MIN_QUALITY = "A+"
 
 # ═══════════════════════════════════════════════════════════════
 # PATCH-3: Ekonomik Filled Notional Filtresi (Post-Fill)
@@ -593,4 +584,4 @@ MIN_ECONOMIC_FILLED_NOTIONAL = 900.0   # USDT — gerçek fill notional minimum 
 # Bir pozisyon kapandıktan sonra aynı coin için yeniden giriş
 # bu süre kadar ertelenir. Daha önce 300 sn (5 dk) idi.
 # ─────────────────────────────────────────────────────────────
-SAME_COIN_REENTRY_COOLDOWN_SEC = 120   # Scalping: 2 dakika cooldown (hızlı re-entry)
+SAME_COIN_REENTRY_COOLDOWN_SEC = 600   # 10 dakika (eski: 300 = 5 dk)
