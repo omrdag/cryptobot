@@ -243,7 +243,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
           <div class="s2"><div class="s2-icon" style="background:#ffaa0010"><svg style="stroke:var(--gold)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div><div class="s2-label">Toplam Komisyon</div><div class="s2-val gd" id="s-comm">$0.00</div></div></div>
         </div>
         <div class="sec-hdr"><div class="sec-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Son 24 Saat İşlem Özeti</div><div class="sec-cnt" id="trade-cnt">0 İşlem</div></div>
-        <div class="empty-box" id="empty-24h"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><div class="empty-txt">Son 24 saatte tamamlanan işlem yok</div></div>
+        <div id="summary-24h"></div>
         <div class="sec-hdr" style="margin-top:4px"><div class="sec-title">Açık Pozisyonlar</div><div class="sec-cnt" id="pos-cnt">0 Pozisyon</div></div>
         <div class="pos-grid" id="pos-grid"></div>
       </div>
@@ -646,7 +646,97 @@ async function loadHistory() {
     const trades = await r.json();
     _trades = trades;
     renderHistoryRows(trades, 'all');
+    render24hSummary(trades);
   } catch { renderHistoryRows([], 'all'); }
+}
+
+function render24hSummary(trades) {
+  const now   = Date.now();
+  const since = now - 24*60*60*1000;
+  // 10 Nisan sonrası filtresi (kullanıcı isteği)
+  const cutoff = new Date('2026-04-10T00:00:00Z').getTime();
+
+  const recent = (trades||[]).filter(t => {
+    if(t.status !== 'closed') return false;
+    const ts = t.closed_at ? new Date(t.closed_at).getTime() : 0;
+    return ts >= Math.max(since, cutoff);
+  });
+
+  const el    = document.getElementById('summary-24h');
+  const cntEl = document.getElementById('trade-cnt');
+
+  if(!recent.length) {
+    el.innerHTML = `<div class="empty-box" style="margin-bottom:12px">
+      <svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
+      <div class="empty-txt">10 Nisan sonrası tamamlanan işlem yok</div>
+    </div>`;
+    if(cntEl) cntEl.textContent = '0 İşlem';
+    return;
+  }
+
+  const total  = recent.length;
+  const wins   = recent.filter(t => (+(t.pnl||0)) > 0).length;
+  const losses = total - wins;
+  const winPct = total > 0 ? Math.round(wins/total*100) : 0;
+  const totalPnl = recent.reduce((a,t) => a+(+(t.pnl||0)), 0);
+  const avgPnl   = total > 0 ? totalPnl/total : 0;
+  const bestTrade  = recent.reduce((a,t) => (+(t.pnl||0))>(+(a.pnl||0))?t:a, recent[0]);
+  const worstTrade = recent.reduce((a,t) => (+(t.pnl||0))<(+(a.pnl||0))?t:a, recent[0]);
+
+  if(cntEl) cntEl.textContent = total + ' İşlem';
+
+  // Özet metrik kartları
+  const metrics = `<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">
+    <div style="background:var(--s2);border-radius:8px;padding:10px 12px;text-align:center">
+      <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace;margin-bottom:4px">Toplam</div>
+      <div style="font-size:20px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:var(--text)">${total}</div>
+    </div>
+    <div style="background:var(--s2);border-radius:8px;padding:10px 12px;text-align:center">
+      <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace;margin-bottom:4px">Win Rate</div>
+      <div style="font-size:20px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:${winPct>=50?'var(--accent)':winPct>=40?'var(--gold)':'var(--danger)'}">${winPct}%</div>
+    </div>
+    <div style="background:var(--s2);border-radius:8px;padding:10px 12px;text-align:center">
+      <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace;margin-bottom:4px">Net PnL</div>
+      <div style="font-size:20px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:${totalPnl>=0?'var(--accent)':'var(--danger)'}">${totalPnl>=0?'+$':'-$'}${Math.abs(totalPnl).toFixed(2)}</div>
+    </div>
+    <div style="background:var(--s2);border-radius:8px;padding:10px 12px;text-align:center">
+      <div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace;margin-bottom:4px">Ort. PnL</div>
+      <div style="font-size:20px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:${avgPnl>=0?'var(--accent)':'var(--danger)'}">${avgPnl>=0?'+$':'-$'}${Math.abs(avgPnl).toFixed(2)}</div>
+    </div>
+  </div>`;
+
+  // Kazanan/kaybeden bar
+  const winBar = `<div style="background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:10px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:10px;font-family:'IBM Plex Mono',monospace">
+      <span style="color:var(--accent)">✓ ${wins} Kazanan</span>
+      <span style="color:var(--dim)">${wins} / ${total}</span>
+      <span style="color:var(--danger)">✗ ${losses} Kaybeden</span>
+    </div>
+    <div style="display:flex;height:6px;border-radius:3px;overflow:hidden;gap:2px">
+      <div style="flex:${wins};background:var(--accent);border-radius:3px;opacity:0.8"></div>
+      <div style="flex:${losses};background:var(--danger);border-radius:3px;opacity:0.8"></div>
+    </div>
+  </div>`;
+
+  // Son işlemler listesi (max 6)
+  const rows = recent.slice(0,6).map(t => {
+    const win  = (+(t.pnl||0)) >= 0;
+    const sym  = (t.symbol||'').replace('USDT','');
+    const date = t.closed_at ? new Date(t.closed_at).toLocaleString('tr-TR',{month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '--';
+    return`<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 14px;border-bottom:1px solid var(--border);font-size:11px">
+      <div style="display:flex;align-items:center;gap:8px">
+        <span style="font-size:9px;padding:2px 6px;border-radius:3px;font-weight:600;font-family:'IBM Plex Mono',monospace;background:${win?'#00ffaa12':'#ff335512'};color:${win?'var(--accent)':'var(--danger)'};border:1px solid ${win?'#00ffaa22':'#ff335522'}">${win?'WIN':'LOSS'}</span>
+        <span style="font-weight:600;font-family:'IBM Plex Mono',monospace">${sym}USDT</span>
+        <span style="color:var(--dim);font-size:10px">${t.strategy||'Pullback Long'}</span>
+      </div>
+      <div style="display:flex;align-items:center;gap:12px">
+        <span style="color:var(--dim);font-size:10px">${date}</span>
+        <span style="font-weight:600;font-family:'IBM Plex Mono',monospace;color:${win?'var(--accent)':'var(--danger)'}">${win?'+$':'-$'}${Math.abs(+(t.pnl||0)).toFixed(2)}</span>
+      </div>
+    </div>`;
+  }).join('');
+
+  el.innerHTML = metrics + winBar + `<div style="background:var(--s1);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px">${rows}</div>`;
 }
 
 function renderHistoryRows(trades, filter) {
