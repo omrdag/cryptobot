@@ -146,12 +146,99 @@ def refresh_all():
             }
         _last_fetch = time.time()
 
-refresh_all()
+_recent_trades  = []
+_trade_stats    = {"total":0,"wins":0,"losses":0,"netPnl":0.0,"winRate":0.0,"avgPnl":0.0,"profitFactor":0.0}
+_last_trade_fetch = 0
+
+def refresh_trades():
+    """OKX'ten son 100 kapanmış işlemi çek, istatistik hesapla."""
+    global _recent_trades, _trade_stats, _last_trade_fetch
+    if not OKX_KEY:
+        return
+    try:
+        # Kapanmış (filled) emirleri çek
+        data   = _okx_get("/api/v5/trade/orders-history?instType=SWAP&limit=100&state=filled")
+        orders = data.get("data", [])
+        trades = []
+        for o in orders:
+            pos_side = o.get("posSide","long")
+            side_raw = o.get("side","buy")
+            # Sadece pozisyon kapatma emirlerini al
+            is_close = (pos_side=="long"  and side_raw=="sell") or \
+                       (pos_side=="short" and side_raw=="buy")
+            if not is_close:
+                continue
+            pnl      = float(o.get("pnl",0) or 0)
+            fee      = float(o.get("fee",0) or 0)
+            net_pnl  = round(pnl + fee, 4)
+            ts_ms    = int(o.get("fillTime",0) or o.get("cTime",0) or 0)
+            ts_str   = datetime.utcfromtimestamp(ts_ms/1000).isoformat() if ts_ms else None
+            inst     = o.get("instId","")
+            sym      = inst.replace("-USDT-SWAP","USDT").replace("-USDT","USDT").replace("-","")
+            avg_px   = float(o.get("avgPx",0) or 0)
+            sz       = float(o.get("accFillSz",0) or 0)
+            notional = avg_px * sz
+            margin   = notional / 10  # 10x kaldıraç
+            pnl_pct  = round(net_pnl / margin * 100, 2) if margin > 0 else 0
+
+            trades.append({
+                "id":          o.get("ordId"),
+                "symbol":      sym,
+                "side":        pos_side,
+                "entry_price": avg_px,
+                "exit_price":  avg_px,
+                "pnl":         net_pnl,
+                "pnl_pct":     pnl_pct,
+                "status":      "closed",
+                "strategy":    "OKX",
+                "mode":        "live",
+                "opened_at":   ts_str,
+                "closed_at":   ts_str,
+                "source":      "okx",
+                "notional":    round(notional, 2),
+            })
+
+        # Tarihe göre sırala — en yeni önce
+        trades.sort(key=lambda t: t.get("closed_at") or "", reverse=True)
+
+        # İstatistik hesapla
+        total   = len(trades)
+        wins    = sum(1 for t in trades if t["pnl"] > 0)
+        losses  = total - wins
+        net     = round(sum(t["pnl"] for t in trades), 2)
+        wr      = round(wins / total * 100, 1) if total > 0 else 0.0
+        avg_pnl = round(net / total, 2) if total > 0 else 0.0
+
+        gross_win  = sum(t["pnl"] for t in trades if t["pnl"] > 0)
+        gross_loss = abs(sum(t["pnl"] for t in trades if t["pnl"] < 0))
+        pf         = round(gross_win / gross_loss, 2) if gross_loss > 0 else 0.0
+
+        with _lock:
+            _recent_trades = trades
+            _trade_stats   = {
+                "total":        total,
+                "wins":         wins,
+                "losses":       losses,
+                "netPnl":       net,
+                "winRate":      wr,
+                "avgPnl":       avg_pnl,
+                "profitFactor": pf,
+            }
+        _last_trade_fetch = time.time()
+    except Exception as e:
+        pass
+
+refresh_trades()
 
 def bg_refresh():
     while True:
         time.sleep(5)
         try: refresh_all()
+        except: pass
+        try:
+            # İşlem geçmişini her 15 saniyede güncelle (OKX ile senkron)
+            if time.time() - _last_trade_fetch > 15:
+                refresh_trades()
         except: pass
 
 threading.Thread(target=bg_refresh, daemon=True).start()
@@ -160,16 +247,27 @@ threading.Thread(target=bg_refresh, daemon=True).start()
 def build_payload():
     with _lock:
         eng = bot_engine.engine_state if _bot_active else {}
+        ts  = _trade_stats
         return {
             "positions":    list(_positions),
-            "recentTrades": [],
-            "stats":        dict(_stats),
+            "recentTrades": list(_recent_trades[:50]),
+            "tradeStats":   dict(ts),
+            "stats": {
+                **dict(_stats),
+                "winRate":       ts.get("winRate",       _stats.get("winRate", 0)),
+                "totalTrades":   ts.get("total",         _stats.get("totalTrades", 0)),
+                "winningTrades": ts.get("wins",          _stats.get("winningTrades", 0)),
+                "losingTrades":  ts.get("losses",        _stats.get("losingTrades", 0)),
+                "profitFactor":  ts.get("profitFactor",  0.0),
+                "avgPnl":        ts.get("avgPnl",        0.0),
+                "totalPnl":      ts.get("netPnl",        _stats.get("totalPnl", 0)),
+            },
             "botStatus": {
                 "running":       eng.get("running", False),
                 "mode":          "paper" if PAPER_TRADING else "live",
                 "exchange":      "okx",
                 "authenticated": bool(OKX_KEY),
-                "strategy":      "Pullback Long + Short v3",
+                "strategy":      "Pullback Long v3",
                 "last_scan":     eng.get("last_scan"),
                 "loop_count":    eng.get("loop_count", 0),
                 "signals":       eng.get("signals", {}),
