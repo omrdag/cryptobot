@@ -702,6 +702,22 @@ function connect() {
     try {
       var d = JSON.parse(e.data);
       if (d.stats) renderStats(d.stats, d.botStatus, d.tradeStats);
+
+      // Bakiye koruma uyarısı
+      if (d.botStatus && d.botStatus.balance_floor_hit) {
+        var existing = document.getElementById('floor-banner');
+        if (!existing) {
+          var banner = document.createElement('div');
+          banner.id = 'floor-banner';
+          banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ff3355;color:#fff;text-align:center;padding:10px;font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:600;z-index:9999;letter-spacing:.03em';
+          banner.textContent = '🚨 BAKİYE KORUMA AKTİF — $' + (d.botStatus.balance_floor || 1000) + ' eşiğine ulaşıldı — YENİ İŞLEM AÇILMIYOR';
+          document.body.appendChild(banner);
+          document.querySelector('.layout').style.marginTop = '40px';
+        }
+      } else {
+        var b = document.getElementById('floor-banner');
+        if (b) { b.remove(); document.querySelector('.layout').style.marginTop = '0'; }
+      }
       var positions = (d.positions || []).map(function(p) {
         var lp = _livePrices[p.symbol];
         if (lp && lp > 0 && !p.is_adopted) {
