@@ -302,6 +302,34 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
             else:
                 _log(f"⚠️ TP2 ayarlanamadı: {tp2_result.get('msg','?')}", "warning")
 
+    # ── 5. Breakeven SL — TP1 tetiklenince SL giriş fiyatına çekil ───────────
+    # OKX'te TP1 tetiklendiğinde kalan pozisyon için SL'yi breakeven'e çek
+    # Bu "move SL to entry" algo emriyle yapılır
+    if tp1_price > 0 and sl_price > 0:
+        be_side = "sell" if pos_side == "long" else "buy"
+        be_qty  = int(qty_contract) - max(1, int(qty_contract * 0.50))
+        if be_qty > 0:
+            # TP1 fiyatı tetiklenince SL'yi giriş fiyatına çeken OCO benzeri emir
+            # OKX'te bu "conditional" order ile yapılır: TP1 trigger → SL = entry
+            be_body = {
+                "instId":        inst_id,
+                "tdMode":        "cross",
+                "side":          be_side,
+                "posSide":       pos_side,
+                "ordType":       "conditional",
+                "sz":            str(be_qty),
+                "slTriggerPx":   round_price(price, tick_sz),  # SL = giriş fiyatı
+                "slOrdPx":       "-1",
+                "slTriggerPxType": "mark",
+                # Bu emir TP1 tetiklenince aktif olacak şekilde ayarla
+                "activePx":      round_price(tp1_price, tick_sz),
+            }
+            be_result = _okx_post("/api/v5/trade/order-algo", be_body)
+            if be_result.get("code") == "0":
+                _log(f"🔒 Breakeven SL ayarlandı: TP1 tetiklenince SL=${price:.4f} (giriş fiyatı)")
+            else:
+                _log(f"⚠️ Breakeven SL ayarlanamadı (devam): {be_result.get('msg','?')}", "warning")
+
     return True
 
 
@@ -660,7 +688,11 @@ def run_funding_arbitrage(open_positions: list, db=None, trade_ids: dict = None)
 
 PULLBACK_SHORT_ACTIVE = os.getenv("PULLBACK_SHORT_ACTIVE", "true").lower() == "true"
 LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "7"))
-GOOD_HOURS_UTC        = list(range(0, 24))  # Her saat açık
+GOOD_HOURS_UTC        = list(range(0, 24))
+
+# SL/TP çarpanları — Railway Variables ile ayarlanabilir
+TP1_R_MULT = float(os.getenv("TP1_R_MULT", "0.5"))  # TP1 = Risk × 0.5 (hızlı kâr)
+TP2_R_MULT = float(os.getenv("TP2_R_MULT", "1.0"))  # TP2 = Risk × 1.0 (kalan)  # Her saat açık
 
 
 def _is_good_trading_hour() -> bool:
@@ -1140,9 +1172,9 @@ def bot_loop():
                     sl    = sig["long"]["sl"] or price * (1 - 0.012)
                     tp    = sig["long"]["tp"] or price * (1 + 0.018)
                     risk  = price - sl
-                    tp1   = price + risk * 1.0
-                    tp2   = price + risk * 2.0
-                    _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/11 | Slot:{long_count+1}/{long_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
+                    tp1   = price + risk * TP1_R_MULT   # Hızlı kâr (0.5R)
+                    tp2   = price + risk * TP2_R_MULT   # Kalan (1.0R)
+                    _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/11 | Slot:{long_count+1}/{long_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f}(0.5R) TP2:${tp2:.4f}(1R)")
                     ok = place_order(inst_id, "buy", SLOT_NOTIONAL, price,
                                      sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
@@ -1176,9 +1208,9 @@ def bot_loop():
                     sl    = sig["short"]["sl"] or price * (1 + 0.012)
                     tp    = sig["short"]["tp"] or price * (1 - 0.018)
                     risk  = sl - price
-                    tp1   = price - risk * 1.0
-                    tp2   = price - risk * 2.0
-                    _log(f"🔴 {sym} SHORT | Puan:{sig['short']['score']}/11 | Slot:{short_count+1}/{short_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f} TP2:${tp2:.4f}")
+                    tp1   = price - risk * TP1_R_MULT   # Hızlı kâr (0.5R)
+                    tp2   = price - risk * TP2_R_MULT   # Kalan (1.0R)
+                    _log(f"🔴 {sym} SHORT | Puan:{sig['short']['score']}/11 | Slot:{short_count+1}/{short_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f}(0.5R) TP2:${tp2:.4f}(1R)")
                     ok = place_order(inst_id, "sell", SLOT_NOTIONAL, price,
                                      sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
