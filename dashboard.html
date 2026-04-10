@@ -670,14 +670,17 @@ function renderSignalPage(){
     var color=best>=9?'var(--accent)':best>=7?'var(--gold)':'var(--danger)';
     var lp=_livePrices[sym]||0;
     var reason=sig.long?(sig.long.reason||''):'';
+    var rShort=sig.short?(sig.short.reason||''):'';
+    var bestReason=best===lScore?reason:rShort;
+    // ✓ karakterine göre parse et (Türkçe karakter encoding sorununu önler)
     var checks={
-      trend:reason.indexOf('Trend hizali')>-1,
-      pullback:reason.indexOf('Pullback zonu')>-1,
-      momentum:reason.indexOf('Momentum')>-1&&reason.indexOf('Momentum sorunlu')===-1,
-      volume:reason.indexOf('Hacim onaylı')>-1||reason.indexOf('Hacim onay')>-1,
-      vwap:reason.indexOf('VWAP')>-1&&reason.indexOf('VWAP alt')===-1,
-      mtf5:reason.indexOf('5dk trend yukarı')>-1,
-      mtf15:reason.indexOf('15dk trend yukarı')>-1
+      trend:    bestReason.indexOf('\u2713 Trend')>-1,
+      pullback: bestReason.indexOf('\u2713 Pullback')>-1,
+      momentum: bestReason.indexOf('\u2713 Momentum')>-1,
+      volume:   bestReason.indexOf('\u2713 Hacim')>-1,
+      vwap:     bestReason.indexOf('\u2713 VWAP')>-1,
+      mtf5:     bestReason.indexOf('\u2713 5dk')>-1,
+      mtf15:    bestReason.indexOf('\u2713 15dk')>-1
     };
     var ck=function(ok,lbl){return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;margin-right:2px;font-family:IBM Plex Mono,monospace;background:'+(ok?'#00e5a015':'#ff2d5515')+';color:'+(ok?'var(--accent)':'var(--danger)')+';border:1px solid '+(ok?'#00e5a025':'#ff2d5525')+'">'+(ok?'&#10003;':'&#10007;')+' '+lbl+'</span>';};
     var entry=isLong&&sig.long&&sig.long.sl?'<div style="font-size:9px;color:var(--dim);margin-top:4px;font-family:IBM Plex Mono,monospace">Giris: $'+(+(sig.long.entry||0)).toFixed(4)+' &bull; SL: $'+(+(sig.long.sl||0)).toFixed(4)+'</div>':'';
@@ -785,6 +788,9 @@ function connect(){
     try{
       var d=JSON.parse(e.data);
       if(d.stats) renderStats(d.stats,d.botStatus,d.tradeStats);
+      // Sinyalleri güncelle — hem top-level hem botStatus'tan al
+      if(d.signals && Object.keys(d.signals).length>0) _signals=d.signals;
+      else if(d.botStatus && d.botStatus.signals && Object.keys(d.botStatus.signals).length>0) _signals=d.botStatus.signals;
       var positions=(d.positions||[]).map(function(p){
         var lp=_livePrices[p.symbol];
         if(lp&&lp>0&&!p.is_adopted){
