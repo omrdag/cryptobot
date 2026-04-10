@@ -8,184 +8,311 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#060810;--s1:#0b0e18;--s2:#0f1320;
-  --border:#1a2235;--border2:#22304a;
-  --accent:#00ffaa;--accent2:#0088ff;--gold:#ffaa00;
-  --danger:#ff3355;--purple:#aa55ff;
-  --text:#dde8f8;--dim:#4a6080;--dim2:#2a3a55;
+  --bg:#05070f;--s1:#090c17;--s2:#0d1020;--s3:#111525;
+  --border:#16213a;--border2:#1e2d4a;
+  --accent:#00e5a0;--accent2:#3d8eff;--gold:#f5a623;
+  --danger:#ff2d55;--purple:#bf5fff;--cyan:#00d4ff;
+  --text:#e8f0fe;--dim:#3d5270;--dim2:#1e2d42;
 }
 html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Plex Sans',sans-serif;font-size:13px;overflow:hidden}
-.layout{display:grid;grid-template-columns:220px 1fr;height:100vh}
-.sidebar{background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column}
-.brand{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
-.brand-icon{width:32px;height:32px;border-radius:8px;border:1px solid #00ffaa25;display:flex;align-items:center;justify-content:center}
-.brand-icon svg{width:16px;height:16px;stroke:var(--accent);fill:none;stroke-width:2}
-.brand-name{font-size:15px;font-weight:600;letter-spacing:-.3px;font-family:'IBM Plex Mono',monospace}
-.brand-name b{color:var(--accent)}
-.eng-box{margin:10px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:10px}
-.eng-label{font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px;display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace}
-.eng-dot{width:6px;height:6px;border-radius:50%;background:var(--dim);transition:all .3s}
-.eng-dot.on{background:var(--accent);box-shadow:0 0 6px var(--accent);animation:pulse 2s infinite}
-@keyframes pulse{0%,100%{opacity:1}50%{opacity:.5}}
-.eng-btn{width:100%;padding:8px;border-radius:7px;border:1px solid;font-size:12px;font-weight:500;cursor:pointer;font-family:'IBM Plex Mono',monospace;transition:all .15s;display:flex;align-items:center;justify-content:center;gap:5px;background:transparent}
-.eng-start{border-color:#00ffaa25;color:var(--accent)}
-.eng-stop{border-color:#ff335525;color:var(--danger)}
+.layout{display:grid;grid-template-columns:200px 1fr;height:100vh}
+
+/* Sidebar */
+.sidebar{background:var(--s1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.brand{padding:18px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px}
+.brand-dot{width:10px;height:10px;border-radius:50%;background:var(--accent);box-shadow:0 0 8px var(--accent)}
+.brand-name{font-size:16px;font-weight:600;font-family:'IBM Plex Mono',monospace;letter-spacing:-.5px}
+.brand-name span{color:var(--accent)}
+
+.status-box{margin:10px;background:var(--s2);border:1px solid var(--border);border-radius:10px;padding:10px 12px}
+.status-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px}
+.status-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;font-family:'IBM Plex Mono',monospace}
+.status-pill{display:flex;align-items:center;gap:5px;font-size:10px;font-family:'IBM Plex Mono',monospace;font-weight:600}
+.sdot{width:6px;height:6px;border-radius:50%}
+.sdot.on{background:var(--accent);animation:pulse 2s infinite}
+.sdot.off{background:var(--dim)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.eng-btn{width:100%;padding:7px;border-radius:7px;border:1px solid;font-size:11px;font-weight:600;cursor:pointer;font-family:'IBM Plex Mono',monospace;transition:all .15s;background:transparent;letter-spacing:.03em}
+.eng-start{border-color:#00e5a020;color:var(--accent)}.eng-start:hover{background:#00e5a010}
+.eng-stop{border-color:#ff2d5520;color:var(--danger)}.eng-stop:hover{background:#ff2d5510}
+
 .nav{padding:6px;flex:1}
-.nav-item{display:flex;align-items:center;gap:9px;padding:8px 10px;border-radius:7px;cursor:pointer;transition:all .15s;margin-bottom:1px;color:var(--dim);border:1px solid transparent}
+.nav-section{font-size:9px;color:var(--dim2);text-transform:uppercase;letter-spacing:.1em;padding:8px 10px 4px;font-family:'IBM Plex Mono',monospace}
+.nav-item{display:flex;align-items:center;gap:8px;padding:7px 10px;border-radius:7px;cursor:pointer;transition:all .12s;margin-bottom:1px;color:var(--dim);border:1px solid transparent}
 .nav-item:hover{background:var(--s2);color:var(--text)}
-.nav-item.active{background:#00ffaa08;color:var(--accent);border-color:#00ffaa20}
-.nav-item svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0}
-.nav-label{font-size:12px}
-.nav-ver{padding:10px 14px;font-size:10px;color:var(--dim2);font-family:'IBM Plex Mono',monospace;display:flex;align-items:center;justify-content:space-between}
-.live-badge{font-size:9px;border:1px solid #ff335530;padding:2px 7px;border-radius:3px;font-family:'IBM Plex Mono',monospace}
-.main{display:flex;flex-direction:column;overflow:hidden}
-.topbar{background:var(--s1);border-bottom:1px solid var(--border);padding:12px 20px;display:flex;align-items:center;justify-content:space-between;flex-shrink:0}
-.page-title{font-size:20px;font-weight:600;letter-spacing:-.3px;font-family:'IBM Plex Mono',monospace}
-.page-sub{font-size:11px;color:var(--dim);margin-top:2px;display:flex;align-items:center;gap:6px}
+.nav-item.active{background:linear-gradient(135deg,#00e5a012,#3d8eff08);color:var(--accent);border-color:#00e5a018}
+.nav-item svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2;flex-shrink:0}
+.nav-label{font-size:11px;font-weight:400}
+.nav-badge{margin-left:auto;font-size:9px;background:var(--accent);color:#000;border-radius:10px;padding:1px 6px;font-weight:700}
+
+.sidebar-footer{padding:10px 14px;border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.ver{font-size:9px;color:var(--dim2);font-family:'IBM Plex Mono',monospace}
+.mode-tag{font-size:9px;padding:2px 8px;border-radius:4px;font-family:'IBM Plex Mono',monospace;font-weight:700}
+
+/* Main */
+.main{display:flex;flex-direction:column;overflow:hidden;background:var(--bg)}
+.topbar{padding:14px 22px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border);background:var(--s1);flex-shrink:0}
+.page-info{}
+.page-title{font-size:22px;font-weight:600;font-family:'IBM Plex Mono',monospace;letter-spacing:-.5px}
+.page-sub{font-size:11px;color:var(--dim);margin-top:3px;display:flex;align-items:center;gap:8px}
 .live-pill{display:flex;align-items:center;gap:4px;font-size:10px;color:var(--accent);font-family:'IBM Plex Mono',monospace}
-.live-dot{width:5px;height:5px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
-.top-btns{display:flex;gap:6px}
-.tbtn{padding:5px 12px;border-radius:5px;border:1px solid;font-size:11px;font-weight:500;cursor:pointer;background:transparent;font-family:'IBM Plex Mono',monospace;transition:all .15s}
-.content{flex:1;overflow-y:auto;padding:18px}
+.ldot{width:4px;height:4px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite}
+.topbar-right{display:flex;align-items:center;gap:8px}
+.tbtn{padding:5px 12px;border-radius:6px;border:1px solid var(--border);font-size:11px;cursor:pointer;background:transparent;font-family:'IBM Plex Mono',monospace;color:var(--dim);transition:all .12s}
+.tbtn:hover{border-color:var(--border2);color:var(--text)}
+.tbtn.danger{border-color:#ff2d5530;color:var(--danger)}
+.tbtn.warn{border-color:#f5a62330;color:var(--gold)}
+
+.content{flex:1;overflow-y:auto;padding:20px 22px}
 .page{display:none}.page.active{display:block}
-.sg1{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:12px}
-.sc{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px;position:relative;overflow:hidden}
-.sc-icon{position:absolute;top:12px;right:12px;width:26px;height:26px;border-radius:6px;background:var(--s2);display:flex;align-items:center;justify-content:center}
-.sc-icon svg{width:13px;height:13px;stroke:var(--dim);fill:none;stroke-width:2}
-.sc-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:7px;font-family:'IBM Plex Mono',monospace}
-.sc-main{font-size:22px;font-weight:600;letter-spacing:-.5px;font-family:'IBM Plex Mono',monospace}
-.g{color:var(--accent)}.r{color:var(--danger)}.gd{color:var(--gold)}
-.sc-sub{font-size:10px;color:var(--dim);margin-top:3px}
-.pv-wrap{display:flex;align-items:baseline;gap:5px;margin-bottom:3px}
-.pv-cash{font-size:16px;font-weight:600;font-family:'IBM Plex Mono',monospace}
-.pv-sep{color:var(--dim)}
-.pv-eq{font-size:20px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--accent)}
-.sg2{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
-.s2{background:var(--s1);border:1px solid var(--border);border-radius:9px;padding:11px 13px;display:flex;align-items:center;gap:9px}
-.s2-icon{width:30px;height:30px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
-.s2-icon svg{width:14px;height:14px;stroke:currentColor;fill:none;stroke-width:2}
-.s2-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;font-family:'IBM Plex Mono',monospace}
-.s2-val{font-size:13px;font-weight:600;font-family:'IBM Plex Mono',monospace}
-.sec-hdr{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
-.sec-title{font-size:12px;font-weight:500;display:flex;align-items:center;gap:5px;font-family:'IBM Plex Mono',monospace;color:var(--dim)}
-.sec-title svg{width:13px;height:13px;stroke:var(--accent);fill:none;stroke-width:2}
-.sec-cnt{font-size:10px;color:var(--dim);font-family:'IBM Plex Mono',monospace}
-.empty-box{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:24px;text-align:center;margin-bottom:12px}
-.empty-box svg{width:32px;height:32px;stroke:var(--dim2);fill:none;stroke-width:1.5;opacity:.4;margin-bottom:8px}
+
+/* Stat cards */
+.kpi-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:10px;margin-bottom:14px}
+.kpi{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px;position:relative;overflow:hidden;transition:border-color .2s}
+.kpi:hover{border-color:var(--border2)}
+.kpi-accent{position:absolute;top:0;left:0;right:0;height:2px;border-radius:2px 2px 0 0}
+.kpi-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.1em;margin-bottom:10px;font-family:'IBM Plex Mono',monospace}
+.kpi-main{font-size:24px;font-weight:600;font-family:'IBM Plex Mono',monospace;letter-spacing:-.5px;line-height:1}
+.kpi-sub{font-size:10px;color:var(--dim);margin-top:5px}
+.kpi-icon{position:absolute;top:14px;right:14px;width:28px;height:28px;border-radius:8px;background:var(--s2);display:flex;align-items:center;justify-content:center}
+.kpi-icon svg{width:13px;height:13px;stroke:var(--dim);fill:none;stroke-width:2}
+
+/* Info strip */
+.info-strip{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px}
+.info-item{background:var(--s1);border:1px solid var(--border);border-radius:9px;padding:10px 12px;display:flex;align-items:center;gap:10px}
+.info-icon{width:28px;height:28px;border-radius:7px;display:flex;align-items:center;justify-content:center;flex-shrink:0}
+.info-icon svg{width:13px;height:13px;stroke:currentColor;fill:none;stroke-width:2}
+.info-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;margin-bottom:2px;font-family:'IBM Plex Mono',monospace}
+.info-val{font-size:13px;font-weight:600;font-family:'IBM Plex Mono',monospace}
+
+/* Section */
+.sec-row{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px}
+.sec-title{font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:var(--dim);display:flex;align-items:center;gap:6px;text-transform:uppercase;letter-spacing:.06em}
+.sec-title svg{width:12px;height:12px;stroke:var(--accent);fill:none;stroke-width:2}
+.sec-cnt{font-size:10px;color:var(--dim);font-family:'IBM Plex Mono',monospace;background:var(--s2);padding:2px 8px;border-radius:4px;border:1px solid var(--border)}
+
+/* Empty */
+.empty{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:32px;text-align:center;margin-bottom:14px}
+.empty svg{width:28px;height:28px;stroke:var(--dim2);fill:none;stroke-width:1.5;opacity:.5;margin-bottom:8px}
 .empty-txt{font-size:11px;color:var(--dim)}
-.pos-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+
+/* Position grid */
+.pos-grid{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+
+/* 24h summary */
+.summary-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px}
+.sum-card{background:var(--s2);border-radius:9px;padding:12px;text-align:center;border:1px solid var(--border)}
+.sum-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;font-family:'IBM Plex Mono',monospace;margin-bottom:5px}
+.sum-val{font-size:20px;font-weight:600;font-family:'IBM Plex Mono',monospace}
+
+/* Trade rows */
+.trade-row{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;border-bottom:1px solid var(--border);transition:background .12s;cursor:default}
+.trade-row:hover{background:var(--s2)}
+.trade-row:last-child{border-bottom:none}
+
+/* History */
 .th-tabs{display:flex;gap:6px;margin-bottom:12px}
-.th-tab{padding:5px 14px;border-radius:5px;border:1px solid var(--border);font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;color:var(--dim);background:transparent;transition:all .15s}
-.th-tab.active{background:var(--accent);color:var(--bg);border-color:var(--accent);font-weight:600}
-.th-table{background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden}
+.th-tab{padding:5px 14px;border-radius:6px;border:1px solid var(--border);font-size:11px;cursor:pointer;font-family:'IBM Plex Mono',monospace;color:var(--dim);background:transparent;transition:all .12s}
+.th-tab.active{background:var(--accent);color:#000;border-color:var(--accent);font-weight:700}
+.th-table{background:var(--s1);border:1px solid var(--border);border-radius:12px;overflow:hidden}
 .th-header{display:grid;grid-template-columns:1.5fr 1fr 2fr 1fr 1fr 1fr;padding:9px 14px;border-bottom:1px solid var(--border);font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;font-family:'IBM Plex Mono',monospace}
+
+/* Signal */
 .sig-header{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin-bottom:14px}
-.sig-stat{background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:10px 12px;text-align:center}
+.sig-stat{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:10px;text-align:center}
 .sig-stat-val{font-size:18px;font-weight:700;font-family:'IBM Plex Mono',monospace;margin-bottom:2px}
-.sig-stat-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;font-family:'IBM Plex Mono',monospace}
-.sig-body{display:grid;grid-template-columns:1fr 340px;gap:12px}
-.sig-table{background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden}
-.sig-status{font-size:9px;padding:2px 8px;border-radius:4px;font-weight:600;font-family:'IBM Plex Mono',monospace}
-.st-active{background:#00ffaa12;color:var(--accent);border:1px solid #00ffaa22}
-.st-watch{background:#0088ff12;color:var(--accent2);border:1px solid #0088ff22}
-.st-approach{background:#ffaa0012;color:var(--gold);border:1px solid #ffaa0022}
-.sig-detail-panel{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px}
-.sdp-title{font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;margin-bottom:12px;color:var(--text)}
-.sdp-coin{display:flex;align-items:center;justify-content:space-between;padding:6px 10px;border-radius:6px;margin-bottom:5px;cursor:pointer;transition:background .15s}
+.sig-stat-label{font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-family:'IBM Plex Mono',monospace}
+.sig-body{display:grid;grid-template-columns:1fr 320px;gap:12px}
+.sig-table{background:var(--s1);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.sig-detail{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:14px}
+.sig-detail-title{font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;margin-bottom:10px;color:var(--text)}
+.sig-status{font-size:9px;padding:2px 8px;border-radius:4px;font-weight:700;font-family:'IBM Plex Mono',monospace}
+.st-active{background:#00e5a015;color:var(--accent);border:1px solid #00e5a025}
+.st-watch{background:#3d8eff15;color:var(--accent2);border:1px solid #3d8eff25}
+.st-approach{background:#f5a62315;color:var(--gold);border:1px solid #f5a62325}
+.sdp-coin{display:flex;align-items:center;justify-content:space-between;padding:5px 8px;border-radius:6px;cursor:pointer;transition:background .12s}
 .sdp-coin:hover{background:var(--s2)}
-.sdp-coin-sym{font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace}
-.sdp-coin-score{font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace}
-.log-list{background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden;font-family:'IBM Plex Mono',monospace}
-.log-row{padding:8px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;font-size:10px}
+
+/* Logs */
+.log-list{background:var(--s1);border:1px solid var(--border);border-radius:12px;overflow:hidden}
+.log-row{padding:7px 14px;border-bottom:1px solid var(--border);display:flex;gap:10px;font-size:10px;font-family:'IBM Plex Mono',monospace}
 .log-row:last-child{border-bottom:none}
-.log-time{color:var(--dim);flex-shrink:0;min-width:70px}
-.log-level{min-width:40px;font-weight:600}
-.log-level.info{color:var(--accent2)}
-.log-level.warn{color:var(--gold)}
-.log-level.err{color:var(--danger)}
+.log-time{color:var(--dim);flex-shrink:0;min-width:60px}
+.log-level{min-width:36px;font-weight:700}
+.log-level.info{color:var(--accent2)}.log-level.warn{color:var(--gold)}.log-level.err{color:var(--danger)}
+
+/* Settings */
 .settings-grid{display:grid;grid-template-columns:1fr 1fr;gap:12px}
-.settings-card{background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px}
-.settings-title{font-size:11px;font-weight:600;font-family:'IBM Plex Mono',monospace;margin-bottom:12px;color:var(--text)}
-.setting-row{display:flex;align-items:center;justify-content:space-between;padding:8px 0;border-bottom:1px solid var(--border);font-size:11px}
+.settings-card{background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px}
+.settings-title{font-size:11px;font-weight:700;font-family:'IBM Plex Mono',monospace;margin-bottom:12px;color:var(--text);text-transform:uppercase;letter-spacing:.06em}
+.setting-row{display:flex;align-items:center;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border);font-size:11px}
 .setting-row:last-child{border-bottom:none}
-.setting-label{color:var(--dim)}
-.setting-val{font-family:'IBM Plex Mono',monospace;font-weight:500}
+.setting-label{color:var(--dim)}.setting-val{font-family:'IBM Plex Mono',monospace;font-weight:600}
+
+/* Colors */
+.g{color:var(--accent)}.r{color:var(--danger)}.gd{color:var(--gold)}.b{color:var(--accent2)}
+
+/* Floor warning — subtle inline, no banner */
+.floor-alert{background:#ff2d5510;border:1px solid #ff2d5530;border-radius:8px;padding:8px 14px;margin-bottom:12px;display:none;align-items:center;gap:8px;font-size:11px;color:var(--danger);font-family:'IBM Plex Mono',monospace}
+.floor-alert.show{display:flex}
 </style>
 </head>
 <body>
 <div class="layout">
+  <!-- SIDEBAR -->
   <div class="sidebar">
     <div class="brand">
-      <div class="brand-icon"><svg viewBox="0 0 24 24"><polyline points="22 7 13.5 15.5 8.5 10.5 2 17"/><polyline points="16 7 22 7 22 13"/></svg></div>
-      <span class="brand-name">Crypto<b>Bot</b></span>
+      <div class="brand-dot"></div>
+      <span class="brand-name">Crypto<span>Bot</span></span>
     </div>
-    <div class="eng-box">
-      <div class="eng-label"><span class="eng-dot" id="eng-dot"></span>ENGINE &bull; <span id="eng-st" style="color:var(--dim)">STANDBY</span></div>
+
+    <div class="status-box">
+      <div class="status-row">
+        <span class="status-label">Engine</span>
+        <span class="status-pill"><span class="sdot off" id="eng-dot"></span><span id="eng-st" style="color:var(--dim)">STANDBY</span></span>
+      </div>
       <button class="eng-btn eng-start" id="eng-btn" onclick="toggleEngine()">&#9711; Start Engine</button>
     </div>
+
     <nav class="nav" id="nav">
+      <div class="nav-section">Ana</div>
       <div class="nav-item active" data-page="dashboard"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/></svg><span class="nav-label">Dashboard</span></div>
-      <div class="nav-item" data-page="signal"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span class="nav-label">Signal Intelligence</span></div>
-      <div class="nav-item" data-page="positions"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span class="nav-label">Positions</span></div>
+      <div class="nav-item" data-page="signal"><svg viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg><span class="nav-label">Signals</span></div>
+      <div class="nav-item" data-page="positions"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><span class="nav-label">Positions</span><span class="nav-badge" id="pos-badge" style="display:none">0</span></div>
+      <div class="nav-section">Analiz</div>
       <div class="nav-item" data-page="history"><svg viewBox="0 0 24 24"><path d="M3 3h18v4H3z"/><path d="M3 10h18v4H3z"/><path d="M3 17h18v3H3z"/></svg><span class="nav-label">Trade History</span></div>
       <div class="nav-item" data-page="perf"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><span class="nav-label">Performance</span></div>
+      <div class="nav-section">Sistem</div>
       <div class="nav-item" data-page="logs"><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg><span class="nav-label">System Logs</span></div>
       <div class="nav-item" data-page="settings"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg><span class="nav-label">Settings</span></div>
     </nav>
-    <div class="nav-ver"><span>v0.3.0</span><span class="live-badge" id="mode-badge" style="color:var(--danger)">LIVE</span></div>
+
+    <div class="sidebar-footer">
+      <span class="ver">v0.3.1</span>
+      <span class="mode-tag" id="mode-badge" style="background:#ff2d5515;color:var(--danger);border:1px solid #ff2d5525">LIVE</span>
+    </div>
   </div>
+
+  <!-- MAIN -->
   <div class="main">
     <div class="topbar">
-      <div>
+      <div class="page-info">
         <div class="page-title" id="page-title">Dashboard</div>
-        <div class="page-sub">Portfoy ozeti ve bot performansi. <span class="live-pill"><span class="live-dot"></span>CANLI</span> <span id="last-upd" style="color:var(--dim)">&#183;0s once</span></div>
+        <div class="page-sub">
+          <span class="live-pill"><span class="ldot"></span>CANLI</span>
+          <span id="last-upd" style="color:var(--dim)">&#183;0s</span>
+        </div>
       </div>
-      <div class="top-btns">
-        <button class="tbtn" id="bot-btn" onclick="toggleBot()" style="border-color:var(--border2);color:var(--dim)">&#9679; Bot Durduruldu</button>
-        <button class="tbtn" style="border-color:#ff335530;color:var(--danger)">&#9888; Live Trading</button>
-        <button class="tbtn" style="border-color:#ffaa0030;color:var(--gold)">&#128276; Ses Acik</button>
+      <div class="topbar-right">
+        <button class="tbtn" id="bot-btn" onclick="toggleBot()">&#9679; Bot Durduruldu</button>
+        <button class="tbtn danger">&#9888; Live</button>
+        <button class="tbtn warn">&#128276; Ses</button>
       </div>
     </div>
+
     <div class="content">
 
       <!-- DASHBOARD -->
       <div class="page active" id="page-dashboard">
-        <div class="sg1">
-          <div class="sc"><div class="sc-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div><div class="sc-label">Toplam Portfoy</div><div class="pv-wrap"><span class="pv-cash" id="p-cash">--</span><span class="pv-sep">/</span><span class="pv-eq" id="p-eq">--</span></div><div style="font-size:10px;color:var(--dim);line-height:1.8">Nakit: <b id="p-nakit" style="color:var(--text)">--</b> &bull; Pozisyon: <b id="p-posval" style="color:var(--text)">--</b><br>Bosta: <span class="g" id="p-bosta">--</span><br>Anlik PnL: <span id="p-anlik" class="g">--</span></div></div>
-          <div class="sc"><div class="sc-icon"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg></div><div class="sc-label">Gunluk PnL</div><div class="sc-main g" id="s-dpnl">--</div><div class="sc-sub"><span id="s-dpct" class="g">--</span></div><div class="sc-sub">Gerceklesmemis dahil</div></div>
-          <div class="sc"><div class="sc-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg></div><div class="sc-label">Win Rate</div><div class="sc-main gd" id="s-wr">--</div><div class="sc-sub" id="s-trades">--</div></div>
-          <div class="sc"><div class="sc-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div><div class="sc-label">Profit Factor</div><div class="sc-main gd" id="s-pf">--</div><div class="sc-sub" id="s-open">-- Acik Pozisyon</div></div>
+        <!-- Floor alert — subtle, no banner -->
+        <div class="floor-alert" id="floor-alert">
+          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+          <span id="floor-alert-text">Bakiye koruma aktif — yeni islem acilmiyor</span>
         </div>
-        <div class="sg2">
-          <div class="s2"><div class="s2-icon" style="background:#00ffaa10"><svg style="stroke:var(--accent)" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div><div><div class="s2-label">Toplam PnL</div><div class="s2-val g" id="s-tpnl">--</div></div></div>
-          <div class="s2"><div class="s2-icon" style="background:#0088ff10"><svg style="stroke:var(--accent2)" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><div><div class="s2-label">Anlik Kar/Zarar</div><div class="s2-val" style="color:var(--accent2)" id="s-unr">--</div></div></div>
-          <div class="s2"><div class="s2-icon" style="background:#ffaa0010"><svg style="stroke:var(--gold)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div><div><div class="s2-label">Ort. PnL / Islem</div><div class="s2-val gd" id="s-avg">--</div></div></div>
-          <div class="s2"><div class="s2-icon" style="background:#ff335510"><svg style="stroke:var(--danger)" viewBox="0 0 24 24"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg></div><div><div class="s2-label">Toplam Islem</div><div class="s2-val" id="s-total" style="color:var(--text)">--</div></div></div>
+
+        <!-- KPI Cards -->
+        <div class="kpi-grid">
+          <div class="kpi">
+            <div class="kpi-accent" style="background:linear-gradient(90deg,var(--accent),var(--accent2))"></div>
+            <div class="kpi-icon"><svg viewBox="0 0 24 24"><rect x="2" y="3" width="20" height="14" rx="2"/><line x1="8" y1="21" x2="16" y2="21"/><line x1="12" y1="17" x2="12" y2="21"/></svg></div>
+            <div class="kpi-label">Toplam Portfoy</div>
+            <div style="display:flex;align-items:baseline;gap:6px;margin-bottom:4px">
+              <span style="font-size:13px;font-family:'IBM Plex Mono',monospace;color:var(--dim)" id="p-cash">--</span>
+              <span style="color:var(--dim2)">/</span>
+              <span class="kpi-main g" id="p-eq">--</span>
+            </div>
+            <div class="kpi-sub">Nakit: <b id="p-nakit" style="color:var(--text)">--</b> &bull; Pozisyon: <b id="p-posval" style="color:var(--text)">--</b></div>
+            <div class="kpi-sub" style="margin-top:2px">PnL: <span id="p-anlik" class="g">--</span></div>
+          </div>
+
+          <div class="kpi">
+            <div class="kpi-accent" id="dpnl-accent" style="background:var(--accent)"></div>
+            <div class="kpi-icon"><svg viewBox="0 0 24 24"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/></svg></div>
+            <div class="kpi-label">Gunluk PnL</div>
+            <div class="kpi-main g" id="s-dpnl">--</div>
+            <div class="kpi-sub"><span id="s-dpct" class="g">--</span> &bull; gerceklesmemis dahil</div>
+          </div>
+
+          <div class="kpi">
+            <div class="kpi-accent" style="background:var(--gold)"></div>
+            <div class="kpi-icon"><svg viewBox="0 0 24 24"><circle cx="12" cy="8" r="6"/><path d="M15.477 12.89L17 22l-5-3-5 3 1.523-9.11"/></svg></div>
+            <div class="kpi-label">Win Rate</div>
+            <div class="kpi-main gd" id="s-wr">--</div>
+            <div class="kpi-sub" id="s-trades">--</div>
+          </div>
+
+          <div class="kpi">
+            <div class="kpi-accent" style="background:var(--purple)"></div>
+            <div class="kpi-icon"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></div>
+            <div class="kpi-label">Profit Factor</div>
+            <div class="kpi-main" id="s-pf" style="color:var(--purple)">--</div>
+            <div class="kpi-sub" id="s-open">-- Acik Pozisyon</div>
+          </div>
         </div>
-        <div class="sec-hdr"><div class="sec-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Son 24 Saat Islem Ozeti</div><div class="sec-cnt" id="trade-cnt">0 Islem</div></div>
+
+        <!-- Info strip -->
+        <div class="info-strip">
+          <div class="info-item">
+            <div class="info-icon" style="background:#00e5a010"><svg style="stroke:var(--accent)" viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+            <div><div class="info-label">Toplam PnL</div><div class="info-val g" id="s-tpnl">--</div></div>
+          </div>
+          <div class="info-item">
+            <div class="info-icon" style="background:#3d8eff10"><svg style="stroke:var(--accent2)" viewBox="0 0 24 24"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div>
+            <div><div class="info-label">Anlik Kar/Zarar</div><div class="info-val b" id="s-unr">--</div></div>
+          </div>
+          <div class="info-item">
+            <div class="info-icon" style="background:#f5a62310"><svg style="stroke:var(--gold)" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg></div>
+            <div><div class="info-label">Ort. PnL / Islem</div><div class="info-val gd" id="s-avg">--</div></div>
+          </div>
+          <div class="info-item">
+            <div class="info-icon" style="background:#bf5fff10"><svg style="stroke:var(--purple)" viewBox="0 0 24 24"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+            <div><div class="info-label">Toplam Islem</div><div class="info-val" style="color:var(--purple)" id="s-total">--</div></div>
+          </div>
+        </div>
+
+        <!-- 24h Summary -->
+        <div class="sec-row">
+          <div class="sec-title"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Son 24 Saat</div>
+          <div class="sec-cnt" id="trade-cnt">0 Islem</div>
+        </div>
         <div id="summary-24h"></div>
-        <div class="sec-hdr" style="margin-top:4px"><div class="sec-title">Acik Pozisyonlar</div><div class="sec-cnt" id="pos-cnt">0 Pozisyon</div></div>
+
+        <!-- Positions -->
+        <div class="sec-row" style="margin-top:6px">
+          <div class="sec-title"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>Acik Pozisyonlar</div>
+          <div class="sec-cnt" id="pos-cnt">0 Pozisyon</div>
+        </div>
         <div class="pos-grid" id="pos-grid"></div>
       </div>
 
-      <!-- SIGNAL INTELLIGENCE -->
+      <!-- SIGNAL -->
       <div class="page" id="page-signal">
         <div class="sig-header">
-          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--gold)" id="si-regime">IZLE</div><div class="sig-stat-label">Piyasa Rejimi</div></div>
-          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--accent2)" id="si-shortlist">5</div><div class="sig-stat-label">Shortlist</div></div>
-          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--accent)" id="si-ready">0</div><div class="sig-stat-label">Hazir Sinyal</div></div>
-          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--gold)" id="si-approach">0</div><div class="sig-stat-label">Yaklasıyor</div></div>
-          <div class="sig-stat"><div class="sig-stat-val" style="color:var(--accent)" id="si-active">0</div><div class="sig-stat-label">Aktif Islem</div></div>
-          <div class="sig-stat"><div class="sig-stat-val" id="si-pnl" style="color:var(--danger)">$0.00</div><div class="sig-stat-label">Acik P&amp;L</div></div>
+          <div class="sig-stat"><div class="sig-stat-val gd" id="si-regime">IZLE</div><div class="sig-stat-label">Rejim</div></div>
+          <div class="sig-stat"><div class="sig-stat-val b" id="si-shortlist">5</div><div class="sig-stat-label">Izleme</div></div>
+          <div class="sig-stat"><div class="sig-stat-val g" id="si-ready">0</div><div class="sig-stat-label">Hazir</div></div>
+          <div class="sig-stat"><div class="sig-stat-val gd" id="si-approach">0</div><div class="sig-stat-label">Yaklasiyor</div></div>
+          <div class="sig-stat"><div class="sig-stat-val g" id="si-active">0</div><div class="sig-stat-label">Aktif</div></div>
+          <div class="sig-stat"><div class="sig-stat-val r" id="si-pnl">$0.00</div><div class="sig-stat-label">Acik P&amp;L</div></div>
         </div>
         <div class="sig-body">
           <div>
-            <div style="font-size:11px;font-weight:500;font-family:'IBM Plex Mono',monospace;color:var(--dim);margin-bottom:8px">ONCELIKLI IZLEME &mdash; <span style="color:var(--text)" id="si-coin-count">5 coin</span></div>
+            <div style="font-size:10px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:var(--dim);margin-bottom:8px;text-transform:uppercase;letter-spacing:.06em"><span id="si-coin-count">5 coin</span> izleniyor</div>
             <div class="sig-table" id="sig-rows"></div>
           </div>
           <div>
-            <div class="sig-detail-panel">
-              <div class="sdp-title" id="sdp-title">Giris Kosullari</div>
+            <div class="sig-detail">
+              <div class="sig-detail-title" id="sdp-title">Giris Kosullari</div>
               <div id="sdp-coins"></div>
               <div id="sdp-indicators"></div>
             </div>
@@ -195,18 +322,18 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 
       <!-- POSITIONS -->
       <div class="page" id="page-positions">
-        <div class="sec-hdr"><div class="sec-title">Tum Acik Pozisyonlar</div><div class="sec-cnt" id="pos-cnt2">0 Pozisyon</div></div>
+        <div class="sec-row"><div class="sec-title">Tum Acik Pozisyonlar</div><div class="sec-cnt" id="pos-cnt2">0</div></div>
         <div class="pos-grid" id="pos-grid2"></div>
       </div>
 
-      <!-- TRADE HISTORY -->
+      <!-- HISTORY -->
       <div class="page" id="page-history">
         <div class="th-tabs">
-          <button class="th-tab active" onclick="setHistoryTab('all',this)">All</button>
+          <button class="th-tab active" onclick="setHistoryTab('all',this)">Tumu</button>
           <button class="th-tab" onclick="setHistoryTab('live',this)">Live</button>
         </div>
         <div class="th-table">
-          <div class="th-header"><span>Tarih</span><span>Sembol/Yon</span><span>Giris/Cikis</span><span>Strateji</span><span>Durum</span><span style="text-align:right">PnL</span></div>
+          <div class="th-header"><span>Tarih</span><span>Sembol</span><span>Giris / Cikis</span><span>Strateji</span><span>Durum</span><span style="text-align:right">PnL</span></div>
           <div id="th-rows"></div>
         </div>
       </div>
@@ -214,9 +341,9 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
       <!-- PERFORMANCE -->
       <div class="page" id="page-perf">
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:14px">
-          <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;font-family:'IBM Plex Mono',monospace">Win Rate</div><div style="font-size:24px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--gold)" id="pf-wr">--</div><div style="font-size:10px;color:var(--dim);margin-top:4px" id="pf-wr-sub">--</div></div>
-          <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;font-family:'IBM Plex Mono',monospace">Profit Factor</div><div style="font-size:24px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--accent)" id="pf-pf">--</div></div>
-          <div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:14px"><div style="font-size:10px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:8px;font-family:'IBM Plex Mono',monospace">Toplam PnL</div><div style="font-size:24px;font-weight:700;font-family:'IBM Plex Mono',monospace;color:var(--accent)" id="pf-pnl">--</div><div style="font-size:10px;color:var(--dim);margin-top:4px" id="pf-pnl-sub">--</div></div>
+          <div style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px"><div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-family:'IBM Plex Mono',monospace">Win Rate</div><div style="font-size:28px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:var(--gold)" id="pf-wr">--</div><div style="font-size:11px;color:var(--dim);margin-top:5px" id="pf-wr-sub">--</div></div>
+          <div style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px"><div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-family:'IBM Plex Mono',monospace">Profit Factor</div><div style="font-size:28px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:var(--accent)" id="pf-pf">--</div></div>
+          <div style="background:var(--s1);border:1px solid var(--border);border-radius:12px;padding:16px"><div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.08em;margin-bottom:10px;font-family:'IBM Plex Mono',monospace">Toplam PnL</div><div style="font-size:28px;font-weight:600;font-family:'IBM Plex Mono',monospace;color:var(--accent)" id="pf-pnl">--</div><div style="font-size:11px;color:var(--dim);margin-top:5px" id="pf-pnl-sub">--</div></div>
         </div>
       </div>
 
@@ -230,28 +357,28 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
             <div class="setting-row"><span class="setting-label">Borsa</span><span class="setting-val g">OKX</span></div>
             <div class="setting-row"><span class="setting-label">Mod</span><span class="setting-val" id="set-mode">--</span></div>
             <div class="setting-row"><span class="setting-label">Kaldirac</span><span class="setting-val">10x</span></div>
-            <div class="setting-row"><span class="setting-label">Max Pozisyon</span><span class="setting-val" id="set-maxpos">6</span></div>
-            <div class="setting-row"><span class="setting-label">Slot Notional</span><span class="setting-val" id="set-notional">$1000</span></div>
-            <div class="setting-row"><span class="setting-label">Strateji</span><span class="setting-val g">Pullback Long v3</span></div>
+            <div class="setting-row"><span class="setting-label">Max Pozisyon</span><span class="setting-val">6</span></div>
+            <div class="setting-row"><span class="setting-label">Min Skor</span><span class="setting-val g">7 / 11</span></div>
+            <div class="setting-row"><span class="setting-label">Bakiye Koruma</span><span class="setting-val g">$1,000</span></div>
           </div>
-          <div class="settings-card"><div class="settings-title">Coin Listesi</div>
-            <div class="setting-row"><span class="setting-label">BTCUSDT</span><span class="setting-val g">&#10003; Aktif</span></div>
-            <div class="setting-row"><span class="setting-label">ETHUSDT</span><span class="setting-val g">&#10003; Aktif</span></div>
-            <div class="setting-row"><span class="setting-label">SOLUSDT</span><span class="setting-val g">&#10003; Aktif</span></div>
-            <div class="setting-row"><span class="setting-label">BNBUSDT</span><span class="setting-val g">&#10003; Aktif</span></div>
-            <div class="setting-row"><span class="setting-label">AVAXUSDT</span><span class="setting-val g">&#10003; Aktif</span></div>
+          <div class="settings-card"><div class="settings-title">Aktif Coinler</div>
+            <div class="setting-row"><span class="setting-label">BTCUSDT</span><span class="setting-val g">&#10003;</span></div>
+            <div class="setting-row"><span class="setting-label">ETHUSDT</span><span class="setting-val g">&#10003;</span></div>
+            <div class="setting-row"><span class="setting-label">SOLUSDT</span><span class="setting-val g">&#10003;</span></div>
+            <div class="setting-row"><span class="setting-label">BNBUSDT</span><span class="setting-val g">&#10003;</span></div>
+            <div class="setting-row"><span class="setting-label">AVAXUSDT</span><span class="setting-val g">&#10003;</span></div>
           </div>
-          <div class="settings-card"><div class="settings-title">API Baglantisi</div>
-            <div class="setting-row"><span class="setting-label">OKX API</span><span class="setting-val g" id="set-auth">Kontrol ediliyor...</span></div>
+          <div class="settings-card"><div class="settings-title">API Durumu</div>
+            <div class="setting-row"><span class="setting-label">OKX API</span><span class="setting-val g" id="set-auth">--</span></div>
             <div class="setting-row"><span class="setting-label">BTC Fiyati</span><span class="setting-val" id="set-btc">--</span></div>
             <div class="setting-row"><span class="setting-label">Loop Sayisi</span><span class="setting-val" id="set-loop">--</span></div>
           </div>
-          <div class="settings-card"><div class="settings-title">Risk Parametreleri</div>
+          <div class="settings-card"><div class="settings-title">Risk</div>
             <div class="setting-row"><span class="setting-label">Stop Loss</span><span class="setting-val">ATR x 2.5</span></div>
-            <div class="setting-row"><span class="setting-label">TP1 (50%)</span><span class="setting-val">Risk x 1.0</span></div>
-            <div class="setting-row"><span class="setting-label">TP2 (50%)</span><span class="setting-val">Risk x 2.0</span></div>
-            <div class="setting-row"><span class="setting-label">Min Skor</span><span class="setting-val g">8 / 11</span></div>
-            <div class="setting-row"><span class="setting-label">Aktif Saatler</span><span class="setting-val g">07-17 UTC</span></div>
+            <div class="setting-row"><span class="setting-label">TP1 (50%)</span><span class="setting-val">1R</span></div>
+            <div class="setting-row"><span class="setting-label">TP2 (50%)</span><span class="setting-val">2R</span></div>
+            <div class="setting-row"><span class="setting-label">Grid Kaldirac</span><span class="setting-val g">3x</span></div>
+            <div class="setting-row"><span class="setting-label">Saatler</span><span class="setting-val g">24 saat</span></div>
           </div>
         </div>
       </div>
@@ -263,498 +390,431 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
 var API = window.location.origin;
 var COINS = ['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','AVAXUSDT'];
 var COIN_COLORS = {BTC:'#f7931a',ETH:'#627eea',SOL:'#9945ff',BNB:'#f0b90b',AVAX:'#e84142'};
+var PAGES = {dashboard:'Dashboard',signal:'Signal Intelligence',positions:'Positions',history:'Trade History',perf:'Performance',logs:'System Logs',settings:'Settings'};
 var es = null, botOn = false, engineOn = false, tick = 0;
-var _positions = [], _stats = {}, _trades = [], _signals = {};
-var _livePrices = {}, _selectedCoin = null, _tradeStats = {};
-
-var PAGE_TITLES = {dashboard:'Dashboard',signal:'Signal Intelligence',positions:'Positions',history:'Trade History',perf:'Performance',logs:'System Logs',settings:'Settings'};
+var _positions = [], _stats = {}, _trades = [], _signals = {}, _tradeStats = {};
+var _livePrices = {}, _selectedCoin = null;
 
 document.getElementById('nav').addEventListener('click', function(e) {
   var item = e.target.closest('.nav-item');
   if (!item) return;
   var page = item.dataset.page;
-  document.querySelectorAll('.nav-item').forEach(function(n) { n.classList.remove('active'); });
+  document.querySelectorAll('.nav-item').forEach(function(n){n.classList.remove('active');});
   item.classList.add('active');
-  document.getElementById('page-title').textContent = PAGE_TITLES[page] || page;
-  document.querySelectorAll('.page').forEach(function(p) { p.classList.remove('active'); });
+  document.getElementById('page-title').textContent = PAGES[page] || page;
+  document.querySelectorAll('.page').forEach(function(p){p.classList.remove('active');});
   document.getElementById('page-' + page).classList.add('active');
-  if (page === 'signal') renderSignalPage();
-  if (page === 'logs') renderLogs();
-  if (page === 'settings') renderSettings();
-  if (page === 'perf') renderPerf();
-  if (page === 'history') renderHistoryRows(_trades, 'all');
+  if (page==='signal') renderSignalPage();
+  if (page==='logs') renderLogs();
+  if (page==='settings') renderSettings();
+  if (page==='perf') renderPerf();
+  if (page==='history') renderHistoryRows(_trades,'all');
 });
 
-function fd(n, d) { d = d || 2; return (+(n || 0)).toFixed(d); }
-function fD(n) { n = +(n || 0); return (n >= 0 ? '+$' : '-$') + Math.abs(n).toFixed(2); }
-function fP(n) { return (+(n || 0) >= 0 ? '+' : '') + fd(n) + '%'; }
+function fd(n,d){d=d||2;return (+(n||0)).toFixed(d);}
+function fD(n){n=+(n||0);return(n>=0?'+$':'-$')+Math.abs(n).toFixed(2);}
+function fP(n){return(+(n||0)>=0?'+':'')+fd(n)+'%';}
 
-function toggleEngine() {
-  engineOn = !engineOn;
-  document.getElementById('eng-dot').className = 'eng-dot' + (engineOn ? ' on' : '');
-  document.getElementById('eng-st').textContent = engineOn ? 'ACTIVE' : 'STANDBY';
-  document.getElementById('eng-st').style.color = engineOn ? 'var(--accent)' : 'var(--dim)';
-  var btn = document.getElementById('eng-btn');
-  btn.textContent = engineOn ? 'Stop Engine' : 'Start Engine';
-  btn.className = 'eng-btn ' + (engineOn ? 'eng-stop' : 'eng-start');
-  fetch(API + '/api/bot/' + (engineOn ? 'start' : 'stop'), {method: 'POST'}).catch(function(){});
+function toggleEngine(){
+  engineOn=!engineOn;
+  var dot=document.getElementById('eng-dot');
+  dot.className='sdot '+(engineOn?'on':'off');
+  document.getElementById('eng-st').textContent=engineOn?'ACTIVE':'STANDBY';
+  document.getElementById('eng-st').style.color=engineOn?'var(--accent)':'var(--dim)';
+  var btn=document.getElementById('eng-btn');
+  btn.textContent=engineOn?'Stop Engine':'Start Engine';
+  btn.className='eng-btn '+(engineOn?'eng-stop':'eng-start');
+  fetch(API+'/api/bot/'+(engineOn?'start':'stop'),{method:'POST'}).catch(function(){});
 }
-
-function toggleBot() {
-  botOn = !botOn;
-  var btn = document.getElementById('bot-btn');
-  btn.textContent = botOn ? 'Bot Calisiyor' : 'Bot Durduruldu';
-  btn.style.color = botOn ? 'var(--accent)' : 'var(--dim)';
+function toggleBot(){
+  botOn=!botOn;
+  var btn=document.getElementById('bot-btn');
+  btn.textContent=botOn?'Bot Calisiyor':'Bot Durduruldu';
+  btn.style.color=botOn?'var(--accent)':'var(--dim)';
 }
 
 function renderStats(s, bot, ts) {
-  if (!s) return;
-  _stats = s;
-  if (ts) _tradeStats = ts;
-  var bal = +(s.totalBalance || 0), unr = +(s.unrealizedPnl || 0), avail = +(s.availableBalance || 0);
-  document.getElementById('p-cash').textContent = '$' + avail.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-  document.getElementById('p-eq').textContent = '$' + bal.toLocaleString('en-US', {minimumFractionDigits:2, maximumFractionDigits:2});
-  document.getElementById('p-nakit').textContent = '$' + avail.toFixed(2);
-  document.getElementById('p-posval').textContent = '$' + (bal - avail).toFixed(2);
-  document.getElementById('p-bosta').textContent = '$' + avail.toFixed(2);
-  var el = document.getElementById('p-anlik'); el.textContent = fD(unr); el.className = unr >= 0 ? 'g' : 'r';
-  var dp = document.getElementById('s-dpnl'); dp.textContent = fD(s.dailyPnl || 0); dp.className = 'sc-main ' + (+(s.dailyPnl || 0) >= 0 ? 'g' : 'r');
-  document.getElementById('s-dpct').textContent = bal > 0 ? fP((+(s.dailyPnl || 0) / bal) * 100) : '--';
-  var wr = ts ? +(ts.winRate || 0) : +(s.winRate || 0);
-  var wins = ts ? +(ts.wins || 0) : +(s.winningTrades || 0);
-  var losses = ts ? +(ts.losses || 0) : +(s.losingTrades || 0);
-  var total = ts ? +(ts.total || 0) : +(s.totalTrades || 0);
-  var pf = ts ? +(ts.profitFactor || 0) : +(s.profitFactor || 0);
-  var avgPnl = ts ? +(ts.avgPnl || 0) : 0;
-  var netPnl = ts ? +(ts.netPnl || 0) : +(s.totalPnl || 0);
-  document.getElementById('s-wr').textContent = fd(wr, 1) + '%';
-  document.getElementById('s-wr').style.color = wr >= 50 ? 'var(--accent)' : wr >= 40 ? 'var(--gold)' : 'var(--danger)';
-  document.getElementById('s-trades').textContent = wins + ' kazanan / ' + losses + ' kaybeden — Toplam: ' + total;
-  document.getElementById('s-pf').textContent = pf > 0 ? fd(pf) + 'x' : '--';
-  document.getElementById('s-pf').style.color = pf >= 1.2 ? 'var(--accent)' : pf >= 0.8 ? 'var(--gold)' : 'var(--danger)';
-  document.getElementById('s-open').textContent = (s.openPositions || 0) + ' Acik Pozisyon';
-  document.getElementById('s-tpnl').textContent = fD(netPnl);
-  document.getElementById('s-avg').textContent = fD(avgPnl);
-  document.getElementById('s-total').textContent = total + ' islem';
-  document.getElementById('s-unr').textContent = fD(unr) + ' (' + fP(bal > 0 ? (unr / bal) * 100 : 0) + ')';
-  if (bot) {
-    document.getElementById('mode-badge').textContent = (bot.mode || 'paper').toUpperCase();
-    document.getElementById('mode-badge').style.color = bot.mode === 'live' ? 'var(--danger)' : 'var(--gold)';
-    if (bot.running) {
-      document.getElementById('eng-dot').className = 'eng-dot on';
-      document.getElementById('eng-st').textContent = 'ACTIVE';
-      document.getElementById('eng-st').style.color = 'var(--accent)';
+  if(!s) return;
+  _stats=s; if(ts) _tradeStats=ts;
+  var bal=+(s.totalBalance||0), unr=+(s.unrealizedPnl||0), avail=+(s.availableBalance||0);
+  document.getElementById('p-cash').textContent='$'+avail.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('p-eq').textContent='$'+bal.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  document.getElementById('p-nakit').textContent='$'+avail.toFixed(2);
+  document.getElementById('p-posval').textContent='$'+(bal-avail).toFixed(2);
+  var pa=document.getElementById('p-anlik'); pa.textContent=fD(unr); pa.className=unr>=0?'g':'r';
+  var dp=document.getElementById('s-dpnl'); var dpv=+(s.dailyPnl||0);
+  dp.textContent=fD(dpv); dp.className='kpi-main '+(dpv>=0?'g':'r');
+  document.getElementById('dpnl-accent').style.background=dpv>=0?'var(--accent)':'var(--danger)';
+  document.getElementById('s-dpct').textContent=bal>0?fP((dpv/bal)*100):'--';
+  var wr=ts?+(ts.winRate||0):+(s.winRate||0);
+  var wins=ts?+(ts.wins||0):+(s.winningTrades||0);
+  var losses=ts?+(ts.losses||0):+(s.losingTrades||0);
+  var total=ts?+(ts.total||0):+(s.totalTrades||0);
+  var pf=ts?+(ts.profitFactor||0):+(s.profitFactor||0);
+  var avgPnl=ts?+(ts.avgPnl||0):0;
+  var netPnl=ts?+(ts.netPnl||0):+(s.totalPnl||0);
+  document.getElementById('s-wr').textContent=fd(wr,1)+'%';
+  document.getElementById('s-wr').style.color=wr>=55?'var(--accent)':wr>=40?'var(--gold)':'var(--danger)';
+  document.getElementById('s-trades').textContent=wins+' kazanan / '+losses+' kaybeden';
+  document.getElementById('s-pf').textContent=pf>0?fd(pf)+'x':'--';
+  document.getElementById('s-pf').style.color=pf>=1.2?'var(--accent)':pf>=0.8?'var(--gold)':'var(--danger)';
+  document.getElementById('s-open').textContent=(s.openPositions||0)+' Acik Pozisyon';
+  document.getElementById('s-tpnl').textContent=fD(netPnl);
+  document.getElementById('s-tpnl').className='info-val '+(netPnl>=0?'g':'r');
+  document.getElementById('s-avg').textContent=fD(avgPnl);
+  document.getElementById('s-total').textContent=total+' islem';
+  document.getElementById('s-unr').textContent=fD(unr)+' ('+fP(bal>0?(unr/bal)*100:0)+')';
+  if(bot){
+    document.getElementById('mode-badge').textContent=(bot.mode||'paper').toUpperCase();
+    document.getElementById('mode-badge').style.color=bot.mode==='live'?'var(--danger)':'var(--gold)';
+    if(bot.running){
+      document.getElementById('eng-dot').className='sdot on';
+      document.getElementById('eng-st').textContent='ACTIVE';
+      document.getElementById('eng-st').style.color='var(--accent)';
     }
-    if (bot.signals) _signals = bot.signals;
+    if(bot.signals) _signals=bot.signals;
+    // Floor alert — subtle inline card, no banner
+    var alert=document.getElementById('floor-alert');
+    if(bot.balance_floor_hit){
+      alert.classList.add('show');
+      document.getElementById('floor-alert-text').textContent='Bakiye koruma aktif ($'+(bot.balance_floor||1000)+' esigi) — yeni islem acilmiyor, pozisyonlar kapatildi';
+    } else {
+      alert.classList.remove('show');
+    }
   }
 }
 
 function renderPositions(positions, gridId, cntId) {
-  _positions = positions || [];
-  var grid = document.getElementById(gridId);
-  var cnt  = document.getElementById(cntId);
-  if (!positions || !positions.length) {
-    grid.innerHTML = '<div class="empty-box" style="grid-column:1/-1"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><div class="empty-txt">Acik pozisyon yok</div></div>';
-    if (cnt) cnt.textContent = '0 Pozisyon';
+  _positions=positions||[];
+  var grid=document.getElementById(gridId);
+  var cnt=document.getElementById(cntId);
+  var badge=document.getElementById('pos-badge');
+  if(!positions||!positions.length){
+    grid.innerHTML='<div class="empty" style="grid-column:1/-1"><svg viewBox="0 0 24 24"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg><div class="empty-txt">Acik pozisyon yok</div></div>';
+    if(cnt) cnt.textContent='0 Pozisyon';
+    if(badge) badge.style.display='none';
     return;
   }
-  if (cnt) cnt.textContent = positions.length + ' Pozisyon';
-  grid.innerHTML = positions.map(function(p) {
-    var il       = p.side === 'long';
-    var pnl      = +(p.pnl || 0);
-    var pnlP     = +(p.pnl_percent || 0);
-    var sym      = (p.symbol || '').replace('USDT', '');
-    var notional = +(p.notional || 0);
-    var entry    = +(p.entry_price || 0);
-    var sl       = +(p.stop_loss || 0);
-    var tp       = +(p.take_profit || 0);
-    var cur      = +(p.current_price || 0);
-    var lev      = p.leverage || 10;
-    var margin   = (notional / lev).toFixed(2);
-    var win      = pnl >= 0;
-    var coinC    = COIN_COLORS[sym] || '#8b949e';
-    var borderC  = win ? '#00ffaa' : '#ff3355';
-    var accentC  = win ? '#00ffaa' : '#ff3355';
-    var pnlSign  = pnl >= 0 ? '+$' : '-$';
-    var pnlAbs   = Math.abs(pnl).toFixed(2);
-    var sideC    = il ? '#00ffaa' : '#ff3355';
-    var curC     = il ? '#00ffaa' : '#ff3355';
-    var fmt = function(v) { return v > 1000 ? '$' + v.toLocaleString(undefined, {maximumFractionDigits:0}) : '$' + v.toFixed(v > 100 ? 1 : v > 10 ? 2 : 3); };
-
-    var barHtml = '';
-    if (sl > 0 && tp > 0 && entry > 0 && cur > 0) {
-      var total = il ? (tp - sl) : (sl - tp);
-      var pos   = il ? Math.max(0, Math.min(total, cur - sl)) : Math.max(0, Math.min(total, sl - cur));
-      var pct   = total > 0 ? (pos / total * 100) : 50;
-      var slDist = il ? ((cur - sl) / entry * 100).toFixed(2) : ((sl - cur) / entry * 100).toFixed(2);
-      var tpDist = il ? ((tp - cur) / entry * 100).toFixed(2) : ((cur - tp) / entry * 100).toFixed(2);
-      var barC   = pct > 65 ? '#00ffaa' : pct > 35 ? '#ffaa00' : '#ff3355';
-      var pctR   = pct.toFixed(1);
-      var pct0   = pct.toFixed(0);
-      var slLabel = il ? 'SL ' + fmt(sl) : 'TP ' + fmt(tp);
-      var tpLabel = il ? 'TP ' + fmt(tp) : 'SL ' + fmt(sl);
-      var slColor = il ? '#ff3355' : '#00ffaa';
-      var tpColor = il ? '#00ffaa' : '#ff3355';
-      barHtml = '<div style="margin:12px 0 8px">'
-        + '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'
-        + '<div><span style="font-size:10px;font-weight:600;color:' + slColor + ';font-family:IBM Plex Mono,monospace">' + slLabel + '</span><br><span style="font-size:9px;color:' + slColor + '88">-' + slDist + '%</span></div>'
-        + '<span style="font-size:9px;color:#4a6080">fiyat pozisyonu</span>'
-        + '<div style="text-align:right"><span style="font-size:10px;font-weight:600;color:' + tpColor + ';font-family:IBM Plex Mono,monospace">' + tpLabel + '</span><br><span style="font-size:9px;color:' + tpColor + '88">+' + tpDist + '%</span></div>'
-        + '</div>'
-        + '<div style="position:relative;height:10px;border-radius:5px;overflow:hidden;background:#0f1320">'
-        + '<div style="position:absolute;inset:0;background:linear-gradient(to right,#ff335520,#ffaa0020,#00ffaa20)"></div>'
-        + '<div style="position:absolute;left:0;top:0;bottom:0;width:' + pctR + '%;background:' + barC + ';opacity:.75;border-radius:5px;transition:width .6s"></div>'
-        + '<div style="position:absolute;top:1px;bottom:1px;left:calc(' + pctR + '% - 1.5px);width:3px;background:#fff;border-radius:2px;opacity:.9"></div>'
-        + '</div>'
-        + '<div style="text-align:center;margin-top:5px"><span style="font-size:10px;font-weight:500;color:' + barC + ';font-family:IBM Plex Mono,monospace">%' + pct0 + ' \u2022 TP\'ye ' + tpDist + '% kaldi</span></div>'
-        + '</div>';
+  if(cnt) cnt.textContent=positions.length+' Pozisyon';
+  if(badge){badge.textContent=positions.length;badge.style.display='inline';}
+  grid.innerHTML=positions.map(function(p){
+    var il=p.side==='long';
+    var pnl=+(p.pnl||0), pnlP=+(p.pnl_percent||0);
+    var sym=(p.symbol||'').replace('USDT','');
+    var notional=+(p.notional||0);
+    var entry=+(p.entry_price||0), sl=+(p.stop_loss||0), tp=+(p.take_profit||0), cur=+(p.current_price||0);
+    var lev=p.leverage||10, margin=(notional/lev).toFixed(2);
+    var win=pnl>=0;
+    var coinC=COIN_COLORS[sym]||'#8b949e';
+    var borderC=win?'#00e5a0':'#ff2d55';
+    var accentC=win?'var(--accent)':'var(--danger)';
+    var sideC=il?'#00e5a0':'#ff2d55';
+    var fmt=function(v){return v>1000?'$'+v.toLocaleString(undefined,{maximumFractionDigits:0}):'$'+v.toFixed(v>100?1:v>10?2:3);};
+    var barHtml='';
+    if(sl>0&&tp>0&&entry>0&&cur>0){
+      var total=il?(tp-sl):(sl-tp);
+      var pos=il?Math.max(0,Math.min(total,cur-sl)):Math.max(0,Math.min(total,sl-cur));
+      var pct=total>0?(pos/total*100):50;
+      var slDist=il?((cur-sl)/entry*100).toFixed(2):((sl-cur)/entry*100).toFixed(2);
+      var tpDist=il?((tp-cur)/entry*100).toFixed(2):((cur-tp)/entry*100).toFixed(2);
+      var barC=pct>65?'#00e5a0':pct>35?'#f5a623':'#ff2d55';
+      var slLabel=il?'SL '+fmt(sl):'TP '+fmt(tp);
+      var tpLabel=il?'TP '+fmt(tp):'SL '+fmt(sl);
+      var slColor=il?'#ff2d55':'#00e5a0', tpColor=il?'#00e5a0':'#ff2d55';
+      barHtml='<div style="margin:12px 0 8px">'
+        +'<div style="display:flex;justify-content:space-between;margin-bottom:6px">'
+        +'<div><div style="font-size:10px;font-weight:600;color:'+slColor+';font-family:IBM Plex Mono,monospace">'+slLabel+'</div><div style="font-size:9px;color:'+slColor+'99">-'+slDist+'%</div></div>'
+        +'<div style="font-size:9px;color:var(--dim);align-self:center">fiyat pozisyonu</div>'
+        +'<div style="text-align:right"><div style="font-size:10px;font-weight:600;color:'+tpColor+';font-family:IBM Plex Mono,monospace">'+tpLabel+'</div><div style="font-size:9px;color:'+tpColor+'99">+'+tpDist+'%</div></div>'
+        +'</div>'
+        +'<div style="position:relative;height:8px;border-radius:4px;overflow:hidden;background:var(--s3)">'
+        +'<div style="position:absolute;inset:0;background:linear-gradient(90deg,#ff2d5520,#f5a62320,#00e5a020)"></div>'
+        +'<div style="position:absolute;left:0;top:0;bottom:0;width:'+pct.toFixed(1)+'%;background:'+barC+';opacity:.8;border-radius:4px;transition:width .5s"></div>'
+        +'<div style="position:absolute;top:1px;bottom:1px;left:calc('+pct.toFixed(1)+'% - 1.5px);width:3px;background:#fff;border-radius:2px;opacity:.9"></div>'
+        +'</div>'
+        +'<div style="text-align:center;margin-top:4px;font-size:9px;font-family:IBM Plex Mono,monospace;color:'+barC+'">%'+pct.toFixed(0)+' \u2022 TP\'ye '+tpDist+'% kaldi</div>'
+        +'</div>';
     }
-
-    return '<div style="background:#0b0e18;border:1px solid ' + borderC + '30;border-top:2px solid ' + borderC + ';border-radius:10px;padding:14px;position:relative;overflow:hidden">'
-      + '<div style="position:absolute;top:0;right:0;width:80px;height:80px;background:' + coinC + '06;border-radius:0 0 0 80px;pointer-events:none"></div>'
-      + '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:10px">'
-        + '<div>'
-          + '<div style="display:flex;align-items:center;gap:6px;margin-bottom:6px">'
-            + '<span style="width:9px;height:9px;border-radius:50%;background:' + coinC + '"></span>'
-            + '<span style="font-size:18px;font-weight:700;font-family:IBM Plex Mono,monospace;color:#dde8f8">' + sym + '</span>'
-            + '<span style="font-size:11px;color:#4a6080;font-family:IBM Plex Mono,monospace">USDT</span>'
-          + '</div>'
-          + '<div style="display:flex;gap:5px">'
-            + '<span style="font-size:9px;padding:2px 8px;border-radius:4px;font-weight:700;font-family:IBM Plex Mono,monospace;color:' + sideC + ';background:' + sideC + '18;border:1px solid ' + sideC + '30">' + (il ? 'LONG' : 'SHORT') + '</span>'
-            + '<span style="font-size:9px;padding:2px 7px;border-radius:4px;font-family:IBM Plex Mono,monospace;background:#ffffff08;color:#4a6080;border:1px solid #1a2235">' + lev + 'x</span>'
-          + '</div>'
-        + '</div>'
-        + '<div style="text-align:right">'
-          + '<div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;margin-bottom:3px">'
-            + '<span style="width:5px;height:5px;border-radius:50%;background:#00ffaa;animation:pulse 2s infinite"></span>'
-            + '<span style="font-size:9px;color:#00ffaa;font-family:IBM Plex Mono,monospace">CANLI</span>'
-          + '</div>'
-          + '<div style="font-size:22px;font-weight:700;font-family:IBM Plex Mono,monospace;color:' + accentC + ';line-height:1">' + pnlSign + pnlAbs + '</div>'
-          + '<div style="font-size:12px;font-weight:500;font-family:IBM Plex Mono,monospace;color:' + accentC + '99;margin-top:2px">' + (pnlP >= 0 ? '+' : '') + pnlP.toFixed(2) + '%</div>'
-        + '</div>'
-      + '</div>'
-      + barHtml
-      + '<div style="display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-top:8px">'
-        + '<div style="background:#ffffff05;border-radius:6px;padding:7px 10px;border:1px solid #1a2235"><div style="font-size:9px;color:#4a6080;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Giris</div><div style="font-size:12px;font-weight:600;font-family:IBM Plex Mono,monospace;color:#dde8f8">$' + entry.toLocaleString(undefined, {maximumFractionDigits: entry > 100 ? 1 : 4}) + '</div></div>'
-        + '<div style="background:#ffffff05;border-radius:6px;padding:7px 10px;border:1px solid #1a2235"><div style="font-size:9px;color:#4a6080;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Guncel</div><div style="font-size:12px;font-weight:600;font-family:IBM Plex Mono,monospace;color:' + curC + '">$' + cur.toLocaleString(undefined, {maximumFractionDigits: cur > 100 ? 1 : 4}) + '</div></div>'
-        + '<div style="background:#ffffff05;border-radius:6px;padding:7px 10px;border:1px solid #1a2235"><div style="font-size:9px;color:#4a6080;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Marjin</div><div style="font-size:12px;font-weight:600;font-family:IBM Plex Mono,monospace;color:#ffaa00">$' + margin + '</div></div>'
-        + '<div style="background:#ffffff05;border-radius:6px;padding:7px 10px;border:1px solid #1a2235"><div style="font-size:9px;color:#4a6080;text-transform:uppercase;letter-spacing:.06em;margin-bottom:3px">Notional</div><div style="font-size:12px;font-weight:600;font-family:IBM Plex Mono,monospace;color:#dde8f8">$' + notional.toLocaleString(undefined, {maximumFractionDigits:0}) + '</div></div>'
-      + '</div>'
-      + '<div style="margin-top:8px;font-size:10px;color:#4a6080;font-family:IBM Plex Mono,monospace">' + (p.strategy_name || 'Pullback Long v3') + '</div>'
-      + '</div>';
+    return '<div style="background:var(--s1);border:1px solid '+borderC+'28;border-top:2px solid '+borderC+';border-radius:12px;padding:14px;position:relative;overflow:hidden">'
+      +'<div style="position:absolute;top:-20px;right:-20px;width:80px;height:80px;border-radius:50%;background:'+coinC+'08;pointer-events:none"></div>'
+      +'<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px">'
+        +'<div>'
+          +'<div style="display:flex;align-items:center;gap:7px;margin-bottom:5px">'
+            +'<span style="width:8px;height:8px;border-radius:50%;background:'+coinC+'"></span>'
+            +'<span style="font-size:17px;font-weight:700;font-family:IBM Plex Mono,monospace;letter-spacing:-.3px">'+sym+'</span>'
+            +'<span style="font-size:10px;color:var(--dim);font-family:IBM Plex Mono,monospace">USDT</span>'
+          +'</div>'
+          +'<div style="display:flex;gap:5px">'
+            +'<span style="font-size:9px;padding:2px 8px;border-radius:4px;font-weight:700;font-family:IBM Plex Mono,monospace;color:'+sideC+';background:'+sideC+'18;border:1px solid '+sideC+'30">'+(il?'LONG':'SHORT')+'</span>'
+            +'<span style="font-size:9px;padding:2px 7px;border-radius:4px;font-family:IBM Plex Mono,monospace;color:var(--dim);background:var(--s2);border:1px solid var(--border)">'+lev+'x</span>'
+          +'</div>'
+        +'</div>'
+        +'<div style="text-align:right">'
+          +'<div style="display:flex;align-items:center;gap:4px;justify-content:flex-end;margin-bottom:3px">'
+            +'<span style="width:5px;height:5px;border-radius:50%;background:var(--accent);animation:pulse 2s infinite"></span>'
+            +'<span style="font-size:9px;color:var(--accent);font-family:IBM Plex Mono,monospace">CANLI</span>'
+          +'</div>'
+          +'<div style="font-size:22px;font-weight:700;font-family:IBM Plex Mono,monospace;color:'+accentC+';line-height:1">'+(pnl>=0?'+$':'-$')+Math.abs(pnl).toFixed(2)+'</div>'
+          +'<div style="font-size:11px;font-family:IBM Plex Mono,monospace;color:'+accentC+'99;margin-top:2px">'+(pnlP>=0?'+':'')+pnlP.toFixed(2)+'%</div>'
+        +'</div>'
+      +'</div>'
+      +barHtml
+      +'<div style="display:grid;grid-template-columns:1fr 1fr;gap:5px;margin-top:8px">'
+        +'<div style="background:var(--s2);border-radius:6px;padding:6px 10px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;font-family:IBM Plex Mono,monospace">Giris</div><div style="font-size:12px;font-weight:600;font-family:IBM Plex Mono,monospace">$'+entry.toLocaleString(undefined,{maximumFractionDigits:entry>100?1:4})+'</div></div>'
+        +'<div style="background:var(--s2);border-radius:6px;padding:6px 10px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;font-family:IBM Plex Mono,monospace">Guncel</div><div style="font-size:12px;font-weight:600;font-family:IBM Plex Mono,monospace;color:'+(il?'var(--accent)':'var(--danger)')+'">$'+cur.toLocaleString(undefined,{maximumFractionDigits:cur>100?1:4})+'</div></div>'
+        +'<div style="background:var(--s2);border-radius:6px;padding:6px 10px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;font-family:IBM Plex Mono,monospace">Marjin</div><div style="font-size:12px;font-weight:600;font-family:IBM Plex Mono,monospace;color:var(--gold)">$'+margin+'</div></div>'
+        +'<div style="background:var(--s2);border-radius:6px;padding:6px 10px;border:1px solid var(--border)"><div style="font-size:8px;color:var(--dim);text-transform:uppercase;letter-spacing:.07em;margin-bottom:2px;font-family:IBM Plex Mono,monospace">Notional</div><div style="font-size:12px;font-weight:600;font-family:IBM Plex Mono,monospace">$'+notional.toLocaleString(undefined,{maximumFractionDigits:0})+'</div></div>'
+      +'</div>'
+      +'<div style="margin-top:8px;font-size:10px;color:var(--dim);font-family:IBM Plex Mono,monospace">'+(p.strategy_name||'Pullback Long v3')+'</div>'
+      +'</div>';
   }).join('');
 }
 
 function render24hSummary(trades) {
-  var now    = Date.now();
-  var since  = now - 24 * 60 * 60 * 1000;
-  var el     = document.getElementById('summary-24h');
-  var cntEl  = document.getElementById('trade-cnt');
-  var recent = (trades || []).filter(function(t) {
-    if (t.status !== 'closed') return false;
-    var ts = t.closed_at ? new Date(t.closed_at).getTime() : 0;
-    return ts >= since;
+  var now=Date.now(), since=now-86400000;
+  var el=document.getElementById('summary-24h'), cntEl=document.getElementById('trade-cnt');
+  var recent=(trades||[]).filter(function(t){
+    if(t.status!=='closed') return false;
+    return t.closed_at ? new Date(t.closed_at).getTime()>=since : false;
   });
-  if (!recent.length) {
-    if (el) el.innerHTML = '<div class="empty-box" style="margin-bottom:12px"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><div class="empty-txt">Son 24 saatte tamamlanan islem yok</div></div>';
-    if (cntEl) cntEl.textContent = '0 Islem';
+  if(!recent.length){
+    if(el) el.innerHTML='<div class="empty" style="margin-bottom:14px"><svg viewBox="0 0 24 24"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg><div class="empty-txt">Son 24 saatte kapanan islem yok</div></div>';
+    if(cntEl) cntEl.textContent='0 Islem';
     return;
   }
-  var total    = recent.length;
-  var wins     = recent.filter(function(t) { return (+(t.pnl || 0)) > 0; }).length;
-  var losses   = total - wins;
-  var winPct   = total > 0 ? Math.round(wins / total * 100) : 0;
-  var totalPnl = recent.reduce(function(a, t) { return a + (+(t.pnl || 0)); }, 0);
-  var avgPnl   = total > 0 ? totalPnl / total : 0;
-  if (cntEl) cntEl.textContent = total + ' Islem';
-  var winC = winPct >= 50 ? 'var(--accent)' : winPct >= 40 ? 'var(--gold)' : 'var(--danger)';
-  var pnlC = totalPnl >= 0 ? 'var(--accent)' : 'var(--danger)';
-  var apC  = avgPnl >= 0 ? 'var(--accent)' : 'var(--danger)';
-  var metrics = '<div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:10px">'
-    + '<div style="background:var(--s2);border-radius:8px;padding:10px 12px;text-align:center"><div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-family:IBM Plex Mono,monospace;margin-bottom:4px">Toplam</div><div style="font-size:20px;font-weight:600;font-family:IBM Plex Mono,monospace;color:var(--text)">' + total + '</div></div>'
-    + '<div style="background:var(--s2);border-radius:8px;padding:10px 12px;text-align:center"><div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-family:IBM Plex Mono,monospace;margin-bottom:4px">Win Rate</div><div style="font-size:20px;font-weight:600;font-family:IBM Plex Mono,monospace;color:' + winC + '">' + winPct + '%</div></div>'
-    + '<div style="background:var(--s2);border-radius:8px;padding:10px 12px;text-align:center"><div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-family:IBM Plex Mono,monospace;margin-bottom:4px">Net PnL</div><div style="font-size:20px;font-weight:600;font-family:IBM Plex Mono,monospace;color:' + pnlC + '">' + (totalPnl >= 0 ? '+$' : '-$') + Math.abs(totalPnl).toFixed(2) + '</div></div>'
-    + '<div style="background:var(--s2);border-radius:8px;padding:10px 12px;text-align:center"><div style="font-size:9px;color:var(--dim);text-transform:uppercase;letter-spacing:.06em;font-family:IBM Plex Mono,monospace;margin-bottom:4px">Ort. PnL</div><div style="font-size:20px;font-weight:600;font-family:IBM Plex Mono,monospace;color:' + apC + '">' + (avgPnl >= 0 ? '+$' : '-$') + Math.abs(avgPnl).toFixed(2) + '</div></div>'
-    + '</div>';
-  var winBar = '<div style="background:var(--s1);border:1px solid var(--border);border-radius:8px;padding:10px 14px;margin-bottom:10px">'
-    + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px;font-size:10px;font-family:IBM Plex Mono,monospace">'
-    + '<span style="color:var(--accent)">&#10003; ' + wins + ' Kazanan</span>'
-    + '<span style="color:var(--dim)">' + wins + ' / ' + total + '</span>'
-    + '<span style="color:var(--danger)">&#10007; ' + losses + ' Kaybeden</span>'
-    + '</div>'
-    + '<div style="display:flex;height:6px;border-radius:3px;overflow:hidden;gap:2px">'
-    + '<div style="flex:' + (wins || 0.1) + ';background:var(--accent);border-radius:3px;opacity:.8"></div>'
-    + '<div style="flex:' + (losses || 0.1) + ';background:var(--danger);border-radius:3px;opacity:.8"></div>'
-    + '</div></div>';
-  var rows = recent.slice(0, 6).map(function(t) {
-    var w   = (+(t.pnl || 0)) >= 0;
-    var sym = (t.symbol || '').replace('USDT', '');
-    var date = t.closed_at ? new Date(t.closed_at).toLocaleString('tr-TR', {month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '--';
-    var tc  = w ? 'var(--accent)' : 'var(--danger)';
-    var ps  = w ? '+$' : '-$';
-    var pa  = Math.abs(+(t.pnl || 0)).toFixed(2);
-    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:8px 14px;border-bottom:1px solid var(--border);font-size:11px">'
-      + '<div style="display:flex;align-items:center;gap:8px">'
-      + '<span style="font-size:9px;padding:2px 6px;border-radius:3px;font-weight:700;font-family:IBM Plex Mono,monospace;background:' + (w?'#00ffaa12':'#ff335512') + ';color:' + tc + ';border:1px solid ' + (w?'#00ffaa22':'#ff335522') + '">' + (w?'WIN':'LOSS') + '</span>'
-      + '<span style="font-weight:600;font-family:IBM Plex Mono,monospace">' + sym + 'USDT</span>'
-      + '<span style="color:var(--dim);font-size:10px">' + (t.strategy || 'OKX') + '</span>'
-      + '</div>'
-      + '<div style="display:flex;align-items:center;gap:12px">'
-      + '<span style="color:var(--dim);font-size:10px">' + date + '</span>'
-      + '<span style="font-weight:700;font-family:IBM Plex Mono,monospace;color:' + tc + '">' + ps + pa + '</span>'
-      + '</div></div>';
+  var total=recent.length, wins=recent.filter(function(t){return(+(t.pnl||0))>0;}).length;
+  var losses=total-wins, winPct=total>0?Math.round(wins/total*100):0;
+  var totalPnl=recent.reduce(function(a,t){return a+(+(t.pnl||0));},0);
+  var avgPnl=total>0?totalPnl/total:0;
+  if(cntEl) cntEl.textContent=total+' Islem';
+  var wC=winPct>=55?'var(--accent)':winPct>=40?'var(--gold)':'var(--danger)';
+  var pC=totalPnl>=0?'var(--accent)':'var(--danger)', aC=avgPnl>=0?'var(--accent)':'var(--danger)';
+  var metrics='<div class="summary-grid">'
+    +'<div class="sum-card"><div class="sum-label">Toplam</div><div class="sum-val" style="color:var(--text)">'+total+'</div></div>'
+    +'<div class="sum-card"><div class="sum-label">Win Rate</div><div class="sum-val" style="color:'+wC+'">'+winPct+'%</div></div>'
+    +'<div class="sum-card"><div class="sum-label">Net PnL</div><div class="sum-val" style="color:'+pC+'">'+(totalPnl>=0?'+$':'-$')+Math.abs(totalPnl).toFixed(2)+'</div></div>'
+    +'<div class="sum-card"><div class="sum-label">Ort. PnL</div><div class="sum-val" style="color:'+aC+'">'+(avgPnl>=0?'+$':'-$')+Math.abs(avgPnl).toFixed(2)+'</div></div>'
+    +'</div>';
+  var winBarW=wins>0?(wins/total*100).toFixed(1):0, lossBarW=losses>0?(losses/total*100).toFixed(1):0;
+  var winBar='<div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;padding:10px 14px;margin-bottom:10px">'
+    +'<div style="display:flex;justify-content:space-between;margin-bottom:6px;font-size:10px;font-family:IBM Plex Mono,monospace">'
+    +'<span style="color:var(--accent)">&#10003; '+wins+' Kazanan</span>'
+    +'<span style="color:var(--dim)">'+wins+' / '+total+'</span>'
+    +'<span style="color:var(--danger)">&#10007; '+losses+' Kaybeden</span>'
+    +'</div>'
+    +'<div style="display:flex;height:5px;border-radius:3px;overflow:hidden;gap:2px">'
+    +'<div style="flex:'+winBarW+';background:var(--accent);border-radius:3px;opacity:.85"></div>'
+    +'<div style="flex:'+lossBarW+';background:var(--danger);border-radius:3px;opacity:.85"></div>'
+    +'</div></div>';
+  var rows=recent.slice(0,6).map(function(t){
+    var w=(+(t.pnl||0))>=0;
+    var sym=(t.symbol||'').replace('USDT','');
+    var date=t.closed_at?new Date(t.closed_at).toLocaleString('tr-TR',{month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'--';
+    var tc=w?'var(--accent)':'var(--danger)';
+    return '<div class="trade-row">'
+      +'<div style="display:flex;align-items:center;gap:8px">'
+      +'<span style="font-size:9px;padding:2px 7px;border-radius:4px;font-weight:700;font-family:IBM Plex Mono,monospace;background:'+(w?'#00e5a012':'#ff2d5512')+';color:'+tc+';border:1px solid '+(w?'#00e5a025':'#ff2d5525')+'">'+(w?'WIN':'LOSS')+'</span>'
+      +'<span style="font-weight:600;font-family:IBM Plex Mono,monospace;font-size:12px">'+sym+'USDT</span>'
+      +'<span style="color:var(--dim);font-size:10px">'+(t.strategy||'OKX')+'</span>'
+      +'</div>'
+      +'<div style="display:flex;align-items:center;gap:12px">'
+      +'<span style="color:var(--dim);font-size:10px">'+date+'</span>'
+      +'<span style="font-weight:700;font-family:IBM Plex Mono,monospace;color:'+tc+'">'+(w?'+$':'-$')+Math.abs(+(t.pnl||0)).toFixed(2)+'</span>'
+      +'</div></div>';
   }).join('');
-  if (el) el.innerHTML = metrics + winBar + '<div style="background:var(--s1);border:1px solid var(--border);border-radius:8px;overflow:hidden;margin-bottom:12px">' + rows + '</div>';
+  if(el) el.innerHTML=metrics+winBar+'<div style="background:var(--s1);border:1px solid var(--border);border-radius:10px;overflow:hidden;margin-bottom:14px">'+rows+'</div>';
 }
 
-function renderHistoryRows(trades, filter) {
-  var rows = document.getElementById('th-rows');
-  var list = filter === 'all' ? trades : trades.filter(function(t) { return t.mode === filter; });
-  if (!list || !list.length) {
-    rows.innerHTML = '<div style="text-align:center;padding:24px;color:var(--dim);font-family:IBM Plex Mono,monospace;font-size:11px">Islem yok</div>';
-    return;
-  }
-  rows.innerHTML = list.map(function(t) {
-    var win   = (+(t.pnl || 0)) >= 0;
-    var sym   = (t.symbol || '').replace('USDT', '');
-    var date  = t.opened_at ? new Date(t.opened_at).toLocaleString('tr-TR', {month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}) : '--';
-    var ep    = '$' + (+(t.entry_price || 0)).toLocaleString();
-    var xp    = t.exit_price ? '$' + (+(t.exit_price)).toLocaleString() : '--';
-    var sideC = t.side === 'long' ? '#00ffaa' : '#ff3355';
-    var sideL = (t.side || 'long').toUpperCase();
-    var tc    = win ? 'var(--accent)' : 'var(--danger)';
-    var st    = (t.status || 'open').toUpperCase();
-    return '<div style="display:grid;grid-template-columns:1.5fr 1fr 2fr 1fr 1fr 1fr;padding:10px 14px;border-bottom:1px solid var(--border);align-items:center">'
-      + '<div style="font-size:10px;font-family:IBM Plex Mono,monospace;color:var(--dim)">' + date + '</div>'
-      + '<div style="display:flex;align-items:center;gap:5px"><span style="font-size:9px;padding:2px 6px;border-radius:3px;font-weight:600;font-family:IBM Plex Mono,monospace;color:' + sideC + ';background:' + sideC + '18;border:1px solid ' + sideC + '30">' + sideL + '</span><span style="font-size:12px;font-weight:600;font-family:IBM Plex Mono,monospace">' + sym + 'USDT</span></div>'
-      + '<div style="font-size:10px;font-family:IBM Plex Mono,monospace;color:var(--dim)"><b style="color:var(--text)">' + ep + '</b> &rarr; ' + xp + '</div>'
-      + '<div style="font-size:9px;color:var(--dim)">' + (t.strategy || 'OKX') + '</div>'
-      + '<div><span style="font-size:9px;padding:2px 8px;border-radius:4px;font-weight:600;font-family:IBM Plex Mono,monospace;background:var(--s2);color:var(--dim);border:1px solid var(--border)">' + st + '</span></div>'
-      + '<div style="font-size:13px;font-weight:700;font-family:IBM Plex Mono,monospace;text-align:right;color:' + tc + '">' + (win ? '+$' : '-$') + Math.abs(+(t.pnl || 0)).toFixed(2) + '</div>'
-      + '</div>';
+function renderHistoryRows(trades,filter){
+  var rows=document.getElementById('th-rows');
+  var list=filter==='all'?trades:trades.filter(function(t){return t.mode===filter;});
+  if(!list||!list.length){rows.innerHTML='<div style="text-align:center;padding:24px;color:var(--dim);font-family:IBM Plex Mono,monospace;font-size:11px">Islem yok</div>';return;}
+  rows.innerHTML=list.map(function(t){
+    var win=(+(t.pnl||0))>=0, sym=(t.symbol||'').replace('USDT','');
+    var date=t.opened_at?new Date(t.opened_at).toLocaleString('tr-TR',{month:'short',day:'2-digit',hour:'2-digit',minute:'2-digit'}):'--';
+    var ep='$'+(+(t.entry_price||0)).toLocaleString();
+    var xp=t.exit_price?'$'+(+(t.exit_price)).toLocaleString():'--';
+    var sideC=t.side==='long'?'#00e5a0':'#ff2d55';
+    var tc=win?'var(--accent)':'var(--danger)';
+    return '<div style="display:grid;grid-template-columns:1.5fr 1fr 2fr 1fr 1fr 1fr;padding:10px 14px;border-bottom:1px solid var(--border);align-items:center;transition:background .12s" onmouseover="this.style.background=\'var(--s2)\'" onmouseout="this.style.background=\'\'">'
+      +'<div style="font-size:10px;font-family:IBM Plex Mono,monospace;color:var(--dim)">'+date+'</div>'
+      +'<div style="display:flex;align-items:center;gap:5px"><span style="font-size:9px;padding:2px 6px;border-radius:4px;font-weight:700;font-family:IBM Plex Mono,monospace;color:'+sideC+';background:'+sideC+'18;border:1px solid '+sideC+'30">'+(t.side||'long').toUpperCase()+'</span><span style="font-size:12px;font-weight:600;font-family:IBM Plex Mono,monospace">'+sym+'USDT</span></div>'
+      +'<div style="font-size:10px;font-family:IBM Plex Mono,monospace;color:var(--dim)"><b style="color:var(--text)">'+ep+'</b> &rarr; '+xp+'</div>'
+      +'<div style="font-size:9px;color:var(--dim)">'+(t.strategy||'OKX')+'</div>'
+      +'<div><span style="font-size:9px;padding:2px 7px;border-radius:4px;font-weight:600;font-family:IBM Plex Mono,monospace;background:var(--s2);color:var(--dim);border:1px solid var(--border)">'+(t.status||'open').toUpperCase()+'</span></div>'
+      +'<div style="font-size:13px;font-weight:700;font-family:IBM Plex Mono,monospace;text-align:right;color:'+tc+'">'+(win?'+$':'-$')+Math.abs(+(t.pnl||0)).toFixed(2)+'</div>'
+      +'</div>';
   }).join('');
 }
 
-function setHistoryTab(filter, btn) {
-  document.querySelectorAll('.th-tab').forEach(function(t) { t.classList.remove('active'); });
+function setHistoryTab(filter,btn){
+  document.querySelectorAll('.th-tab').forEach(function(t){t.classList.remove('active');});
   btn.classList.add('active');
-  renderHistoryRows(_trades, filter);
+  renderHistoryRows(_trades,filter);
 }
 
-function renderSignalPage() {
-  var sigs  = _signals;
-  var coins = Object.keys(sigs).length > 0 ? Object.keys(sigs) : COINS;
-  document.getElementById('si-coin-count').textContent = coins.length + ' coin';
-  var readyCount = 0, approachCount = 0;
-  var html = coins.map(function(sym) {
-    var sig      = sigs[sym] || {};
-    var lScore   = sig.long  ? +(sig.long.score  || 0) : 0;
-    var sScore   = sig.short ? +(sig.short.score || 0) : 0;
-    var best     = Math.max(lScore, sScore);
-    var isLong   = sig.long  && sig.long.enter;
-    var isShort  = sig.short && sig.short.enter;
-    var inPos    = sig.in_position;
-    var stlbl, stcls;
-    if (inPos)              { stlbl = 'AKTIF';      stcls = 'st-active'; }
-    else if (isLong||isShort){ stlbl = 'SINYAL';    stcls = 'st-active'; readyCount++; }
-    else if (best >= 9)     { stlbl = 'YAKLISIYOR'; stcls = 'st-approach'; approachCount++; }
-    else                    { stlbl = 'IZLEME';     stcls = 'st-watch'; }
-    var color  = best >= 9 ? 'var(--accent)' : best >= 7 ? 'var(--gold)' : 'var(--danger)';
-    var dotC   = best >= 9 ? 'var(--accent)' : best >= 7 ? 'var(--gold)' : 'var(--dim)';
-    var lp     = _livePrices[sym] || 0;
-    var reason = sig.long ? (sig.long.reason || '') : '';
-    var checks = {
-      trend:    reason.indexOf('Trend hizali') > -1,
-      pullback: reason.indexOf('Pullback zonu') > -1,
-      momentum: reason.indexOf('Momentum saglıklı') > -1 || reason.indexOf('Momentum') > -1,
-      volume:   reason.indexOf('Hacim onaylı') > -1 || reason.indexOf('Hacim') > -1,
-      vwap:     reason.indexOf('VWAP') > -1 && reason.indexOf('VWAP altında') === -1,
-      mtf5:     reason.indexOf('5dk trend') > -1,
-      mtf15:    reason.indexOf('15dk trend') > -1
+function renderSignalPage(){
+  var sigs=_signals, coins=Object.keys(sigs).length>0?Object.keys(sigs):COINS;
+  document.getElementById('si-coin-count').textContent=coins.length;
+  var readyCount=0, approachCount=0;
+  var html=coins.map(function(sym){
+    var sig=sigs[sym]||{};
+    var lScore=sig.long?+(sig.long.score||0):0, sScore=sig.short?+(sig.short.score||0):0;
+    var best=Math.max(lScore,sScore);
+    var isLong=sig.long&&sig.long.enter, isShort=sig.short&&sig.short.enter, inPos=sig.in_position;
+    var stlbl,stcls;
+    if(inPos){stlbl='AKTIF';stcls='st-active';}
+    else if(isLong||isShort){stlbl='SINYAL';stcls='st-active';readyCount++;}
+    else if(best>=9){stlbl='YAKLISIYOR';stcls='st-approach';approachCount++;}
+    else{stlbl='IZLEME';stcls='st-watch';}
+    var color=best>=9?'var(--accent)':best>=7?'var(--gold)':'var(--danger)';
+    var lp=_livePrices[sym]||0;
+    var reason=sig.long?(sig.long.reason||''):'';
+    var checks={
+      trend:reason.indexOf('Trend hizali')>-1,
+      pullback:reason.indexOf('Pullback zonu')>-1,
+      momentum:reason.indexOf('Momentum')>-1&&reason.indexOf('Momentum sorunlu')===-1,
+      volume:reason.indexOf('Hacim onaylı')>-1||reason.indexOf('Hacim onay')>-1,
+      vwap:reason.indexOf('VWAP')>-1&&reason.indexOf('VWAP alt')===-1,
+      mtf5:reason.indexOf('5dk trend yukarı')>-1,
+      mtf15:reason.indexOf('15dk trend yukarı')>-1
     };
-    var ck = function(ok, lbl) {
-      return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;margin-right:2px;font-family:IBM Plex Mono,monospace;background:' + (ok?'#00ffaa18':'#ff335518') + ';color:' + (ok?'var(--accent)':'var(--danger)') + ';border:1px solid ' + (ok?'#00ffaa25':'#ff335525') + '">' + (ok?'&#10003;':'&#10007;') + ' ' + lbl + '</span>';
-    };
-    var entryLine = isLong && sig.long && sig.long.sl
-      ? '<div style="font-size:9px;color:var(--dim);margin-top:4px;font-family:IBM Plex Mono,monospace">Giris: $' + (+(sig.long.entry||0)).toFixed(4) + ' &bull; SL: $' + (+(sig.long.sl||0)).toFixed(4) + ' &bull; TP: $' + (+(sig.long.tp||0)).toFixed(4) + '</div>'
-      : '';
-    return '<div style="display:block;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer" onclick="selectCoin(\'' + sym + '\')">'
-      + '<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
-        + '<div style="display:flex;align-items:center;gap:8px">'
-          + '<span style="width:7px;height:7px;border-radius:50%;background:' + dotC + '"></span>'
-          + '<span style="font-size:13px;font-weight:600;font-family:IBM Plex Mono,monospace">' + sym.replace('USDT','') + '</span>'
-          + '<span style="font-size:10px;color:var(--dim)">' + (lp > 0 ? '$' + lp.toLocaleString() : '') + '</span>'
-          + (isLong ? '<span style="font-size:10px;font-weight:600;color:var(--accent)">LONG</span>' : isShort ? '<span style="font-size:10px;font-weight:600;color:var(--danger)">SHORT</span>' : '')
-        + '</div>'
-        + '<div style="display:flex;align-items:center;gap:6px">'
-          + '<span style="font-size:16px;font-weight:700;font-family:IBM Plex Mono,monospace;color:' + color + '">' + best + '</span>'
-          + '<span style="font-size:9px;color:var(--dim);font-family:IBM Plex Mono,monospace">/11</span>'
-          + '<span class="sig-status ' + stcls + '">' + stlbl + '</span>'
-        + '</div>'
-      + '</div>'
-      + '<div style="display:flex;flex-wrap:wrap;gap:3px;margin-bottom:5px">' + ck(checks.trend,'Trend') + ck(checks.pullback,'Pullback') + ck(checks.momentum,'Momentum') + ck(checks.volume,'Hacim') + ck(checks.vwap,'VWAP') + ck(checks.mtf5,'5dk') + ck(checks.mtf15,'15dk') + '</div>'
-      + '<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:4px;background:var(--border);border-radius:2px;overflow:hidden"><div style="height:100%;border-radius:2px;background:' + color + ';width:' + Math.min(100, best/11*100) + '%"></div></div><span style="font-size:9px;color:var(--dim);font-family:IBM Plex Mono,monospace">%' + Math.round(best/11*100) + '</span></div>'
-      + entryLine
-      + '</div>';
+    var ck=function(ok,lbl){return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;margin-right:2px;font-family:IBM Plex Mono,monospace;background:'+(ok?'#00e5a015':'#ff2d5515')+';color:'+(ok?'var(--accent)':'var(--danger)')+';border:1px solid '+(ok?'#00e5a025':'#ff2d5525')+'">'+(ok?'&#10003;':'&#10007;')+' '+lbl+'</span>';};
+    var entry=isLong&&sig.long&&sig.long.sl?'<div style="font-size:9px;color:var(--dim);margin-top:4px;font-family:IBM Plex Mono,monospace">Giris: $'+(+(sig.long.entry||0)).toFixed(4)+' &bull; SL: $'+(+(sig.long.sl||0)).toFixed(4)+'</div>':'';
+    return '<div style="display:block;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'var(--s2)\'" onmouseout="this.style.background=\'\'" onclick="selectCoin(\''+sym+'\')">'
+      +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
+        +'<div style="display:flex;align-items:center;gap:8px">'
+          +'<span style="width:7px;height:7px;border-radius:50%;background:'+color+'"></span>'
+          +'<span style="font-size:13px;font-weight:600;font-family:IBM Plex Mono,monospace">'+sym.replace('USDT','')+'</span>'
+          +'<span style="font-size:10px;color:var(--dim)">'+(lp>0?'$'+lp.toLocaleString():'')+'</span>'
+          +(isLong?'<span style="font-size:9px;font-weight:700;color:var(--accent);font-family:IBM Plex Mono,monospace">LONG</span>':isShort?'<span style="font-size:9px;font-weight:700;color:var(--danger);font-family:IBM Plex Mono,monospace">SHORT</span>':'')
+        +'</div>'
+        +'<div style="display:flex;align-items:center;gap:5px">'
+          +'<span style="font-size:15px;font-weight:700;font-family:IBM Plex Mono,monospace;color:'+color+'">'+best+'</span>'
+          +'<span style="font-size:9px;color:var(--dim);font-family:IBM Plex Mono,monospace">/11</span>'
+          +'<span class="sig-status '+stcls+'">'+stlbl+'</span>'
+        +'</div>'
+      +'</div>'
+      +'<div style="margin-bottom:5px">'+ck(checks.trend,'Trend')+ck(checks.pullback,'Pullback')+ck(checks.momentum,'Mom.')+ck(checks.volume,'Hacim')+ck(checks.vwap,'VWAP')+ck(checks.mtf5,'5dk')+ck(checks.mtf15,'15dk')+'</div>'
+      +'<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:4px;background:var(--s3);border-radius:2px;overflow:hidden"><div style="height:100%;border-radius:2px;background:'+color+';width:'+Math.min(100,best/11*100)+'%"></div></div><span style="font-size:9px;color:var(--dim);font-family:IBM Plex Mono,monospace">%'+Math.round(best/11*100)+'</span></div>'
+      +entry+'</div>';
   }).join('');
-  document.getElementById('sig-rows').innerHTML = html;
-  document.getElementById('si-ready').textContent    = readyCount;
-  document.getElementById('si-approach').textContent = approachCount;
-  document.getElementById('si-active').textContent   = _positions.filter(function(p){return !p.is_adopted;}).length;
-  document.getElementById('si-shortlist').textContent = coins.length;
-  var openPnl = _positions.reduce(function(a,p){return a+(+(p.pnl||0));},0);
-  var pnlEl = document.getElementById('si-pnl');
-  pnlEl.textContent = fD(openPnl);
-  pnlEl.style.color = openPnl >= 0 ? 'var(--accent)' : 'var(--danger)';
-  renderCoinDetail(_selectedCoin || coins[0], sigs);
+  document.getElementById('sig-rows').innerHTML=html;
+  document.getElementById('si-ready').textContent=readyCount;
+  document.getElementById('si-approach').textContent=approachCount;
+  document.getElementById('si-active').textContent=_positions.filter(function(p){return !p.is_adopted;}).length;
+  document.getElementById('si-shortlist').textContent=coins.length;
+  var openPnl=_positions.reduce(function(a,p){return a+(+(p.pnl||0));},0);
+  var pnlEl=document.getElementById('si-pnl');
+  pnlEl.textContent=fD(openPnl);pnlEl.className='sig-stat-val '+(openPnl>=0?'g':'r');
+  renderCoinDetail(_selectedCoin||coins[0],sigs);
 }
 
-function selectCoin(sym) {
-  _selectedCoin = sym;
-  renderCoinDetail(sym, _signals);
-}
+function selectCoin(sym){_selectedCoin=sym;renderCoinDetail(sym,_signals);}
 
-function renderCoinDetail(sym, sigs) {
-  if (!sym || !sigs[sym]) return;
-  var sig    = sigs[sym];
-  var reason = sig.long ? (sig.long.reason || '') : '';
-  var lines  = reason.split(' | ');
-  var panel  = document.getElementById('sdp-indicators');
-  var title  = document.getElementById('sdp-title');
-  if (title) title.textContent = sym.replace('USDT','') + ' — Giris Kosullari';
-  panel.innerHTML = lines.map(function(l) {
-    var ok   = l.charAt(0) === '\u2713';
-    var warn = l.charAt(0) === '\u26a0';
-    var c    = ok ? 'var(--accent)' : warn ? 'var(--gold)' : 'var(--danger)';
+function renderCoinDetail(sym,sigs){
+  if(!sym||!sigs[sym]) return;
+  var sig=sigs[sym], reason=sig.long?(sig.long.reason||''):'';
+  var lines=reason.split(' | ');
+  var panel=document.getElementById('sdp-indicators');
+  var title=document.getElementById('sdp-title');
+  if(title) title.textContent=sym.replace('USDT','')+' — Giris Kosullari';
+  panel.innerHTML=lines.map(function(l){
+    var ok=l.charAt(0)==='\u2713', warn=l.charAt(0)==='\u26a0';
+    var c=ok?'var(--accent)':warn?'var(--gold)':'var(--danger)';
     return '<div style="display:flex;align-items:flex-start;gap:6px;padding:5px 0;border-bottom:1px solid var(--border);font-size:10px">'
-      + '<span style="color:' + c + ';flex-shrink:0">' + (ok?'&#10003;':warn?'&#9888;':'&#10007;') + '</span>'
-      + '<span style="color:' + (ok?'var(--text)':warn?'var(--gold)':'var(--dim)') + ';font-family:IBM Plex Mono,monospace;line-height:1.4">' + l.replace(/^[✓✗⚠]\s*/,'') + '</span>'
-      + '</div>';
+      +'<span style="color:'+c+';flex-shrink:0">'+(ok?'&#10003;':warn?'&#9888;':'&#10007;')+'</span>'
+      +'<span style="color:'+(ok?'var(--text)':warn?'var(--gold)':'var(--dim)')+';font-family:IBM Plex Mono,monospace;line-height:1.4">'+l.replace(/^[✓✗⚠]\s*/,'')+'</span>'
+      +'</div>';
   }).join('');
-  var coinsEl = document.getElementById('sdp-coins');
-  if (coinsEl) {
-    coinsEl.innerHTML = Object.keys(sigs).map(function(s) {
-      var sc = Math.max(sigs[s] && sigs[s].long ? +(sigs[s].long.score||0) : 0, sigs[s] && sigs[s].short ? +(sigs[s].short.score||0) : 0);
-      var col = sc >= 9 ? 'var(--accent)' : sc >= 7 ? 'var(--gold)' : 'var(--dim)';
-      return '<div class="sdp-coin" onclick="selectCoin(\'' + s + '\')" style="' + (s===sym?'background:var(--s2)':'') + '">'
-        + '<span class="sdp-coin-sym" style="color:' + (s===sym?'var(--accent)':'var(--text)') + '">' + s.replace('USDT','') + '</span>'
-        + '<span class="sdp-coin-score" style="color:' + col + '">' + sc + '<small style="color:var(--dim);font-size:9px">/11</small></span>'
-        + '</div>';
-    }).join('');
-  }
+  var coinsEl=document.getElementById('sdp-coins');
+  if(coinsEl) coinsEl.innerHTML=Object.keys(sigs).map(function(s){
+    var sc=Math.max(sigs[s]&&sigs[s].long?+(sigs[s].long.score||0):0,sigs[s]&&sigs[s].short?+(sigs[s].short.score||0):0);
+    var col=sc>=9?'var(--accent)':sc>=7?'var(--gold)':'var(--dim)';
+    return '<div class="sdp-coin" onclick="selectCoin(\''+s+'\')" style="'+(s===sym?'background:var(--s2)':'')+'">'
+      +'<span style="font-size:11px;font-weight:600;font-family:IBM Plex Mono,monospace;color:'+(s===sym?'var(--accent)':'var(--text)')+'">'+s.replace('USDT','')+'</span>'
+      +'<span style="font-size:11px;font-weight:700;font-family:IBM Plex Mono,monospace;color:'+col+'">'+sc+'<small style="color:var(--dim);font-size:9px">/11</small></span>'
+      +'</div>';
+  }).join('');
 }
 
-function renderPerf() {
-  var ts = _tradeStats;
-  var wr = +(ts.winRate || 0);
-  var pf = +(ts.profitFactor || 0);
-  var net = +(ts.netPnl || 0);
-  var total = +(ts.total || 0);
-  document.getElementById('pf-wr').textContent = fd(wr, 1) + '%';
-  document.getElementById('pf-wr').style.color = wr >= 50 ? 'var(--accent)' : wr >= 40 ? 'var(--gold)' : 'var(--danger)';
-  document.getElementById('pf-wr-sub').textContent = (ts.wins||0) + ' kazanan / ' + (ts.losses||0) + ' kaybeden';
-  document.getElementById('pf-pf').textContent = pf > 0 ? fd(pf) + 'x' : '--';
-  document.getElementById('pf-pnl').textContent = fD(net);
-  document.getElementById('pf-pnl-sub').textContent = total + ' islem';
+function renderPerf(){
+  var ts=_tradeStats;
+  var wr=+(ts.winRate||0), pf=+(ts.profitFactor||0), net=+(ts.netPnl||0), total=+(ts.total||0);
+  document.getElementById('pf-wr').textContent=fd(wr,1)+'%';
+  document.getElementById('pf-wr').style.color=wr>=55?'var(--accent)':wr>=40?'var(--gold)':'var(--danger)';
+  document.getElementById('pf-wr-sub').textContent=(ts.wins||0)+' kazanan / '+(ts.losses||0)+' kaybeden';
+  document.getElementById('pf-pf').textContent=pf>0?fd(pf)+'x':'--';
+  document.getElementById('pf-pnl').textContent=fD(net);
+  document.getElementById('pf-pnl-sub').textContent=total+' islem';
 }
 
-function renderLogs() {
-  fetch(API + '/api/logs').then(function(r){return r.json();}).then(function(logs) {
-    document.getElementById('log-list').innerHTML = logs.map(function(l) {
-      var parts = l.match(/^\[(\d+:\d+:\d+)\] (.+)$/);
-      var t = parts ? parts[1] : '--', msg = parts ? parts[2] : l;
-      var lvl = (msg.indexOf('hata')>-1||msg.indexOf('BASARISIZ')>-1||msg.indexOf('❌')>-1) ? 'err' : (msg.indexOf('⚠')>-1||msg.indexOf('KAPAT')>-1) ? 'warn' : 'info';
-      return '<div class="log-row"><span class="log-time">' + t + '</span><span class="log-level ' + lvl + '">' + lvl.toUpperCase() + '</span><span class="log-msg">' + msg + '</span></div>';
+function renderLogs(){
+  fetch(API+'/api/logs').then(function(r){return r.json();}).then(function(logs){
+    document.getElementById('log-list').innerHTML=logs.map(function(l){
+      var p=l.match(/^\[(\d+:\d+:\d+)\] (.+)$/), t=p?p[1]:'--', msg=p?p[2]:l;
+      var lvl=(msg.indexOf('hata')>-1||msg.indexOf('❌')>-1)?'err':(msg.indexOf('⚠')>-1||msg.indexOf('KAPAT')>-1||msg.indexOf('🚨')>-1)?'warn':'info';
+      return '<div class="log-row"><span class="log-time">'+t+'</span><span class="log-level '+lvl+'">'+lvl.toUpperCase()+'</span><span style="color:var(--text)">'+msg+'</span></div>';
     }).join('');
   }).catch(function(){});
 }
 
-function renderSettings() {
-  fetch(API + '/api/health').then(function(r){return r.json();}).then(function(d) {
-    document.getElementById('set-btc').textContent = d.btc_price > 0 ? '$' + d.btc_price.toLocaleString() : '--';
-    document.getElementById('set-loop').textContent = d.loop_count || '--';
-    document.getElementById('set-auth').textContent = d.authenticated ? 'Baglı' : 'Baglı degil';
-    document.getElementById('set-auth').style.color = d.authenticated ? 'var(--accent)' : 'var(--danger)';
-    document.getElementById('set-mode').textContent = d.paper_trading ? 'PAPER' : 'LIVE';
-    document.getElementById('set-mode').style.color = d.paper_trading ? 'var(--gold)' : 'var(--danger)';
+function renderSettings(){
+  fetch(API+'/api/health').then(function(r){return r.json();}).then(function(d){
+    document.getElementById('set-btc').textContent=d.btc_price>0?'$'+d.btc_price.toLocaleString():'--';
+    document.getElementById('set-loop').textContent=d.loop_count||'--';
+    document.getElementById('set-auth').textContent=d.authenticated?'Bagli':'Bagli degil';
+    document.getElementById('set-auth').style.color=d.authenticated?'var(--accent)':'var(--danger)';
+    document.getElementById('set-mode').textContent=d.paper_trading?'PAPER':'LIVE';
+    document.getElementById('set-mode').style.color=d.paper_trading?'var(--gold)':'var(--danger)';
   }).catch(function(){});
 }
 
-async function fetchLivePrices() {
-  for (var i = 0; i < COINS.length; i++) {
-    var sym  = COINS[i];
-    var inst = sym.replace('USDT', '-USDT');
-    try {
-      var r = await fetch('https://www.okx.com/api/v5/market/ticker?instId=' + inst);
-      var d = await r.json();
-      var p = parseFloat(d && d.data && d.data[0] ? d.data[0].last : 0);
-      if (p > 0) _livePrices[sym] = p;
-    } catch(e) {}
+async function fetchLivePrices(){
+  for(var i=0;i<COINS.length;i++){
+    var sym=COINS[i], inst=sym.replace('USDT','-USDT');
+    try{var r=await fetch('https://www.okx.com/api/v5/market/ticker?instId='+inst);var d=await r.json();var p=parseFloat(d&&d.data&&d.data[0]?d.data[0].last:0);if(p>0)_livePrices[sym]=p;}catch(e){}
   }
 }
-fetchLivePrices();
-setInterval(fetchLivePrices, 5000);
+fetchLivePrices();setInterval(fetchLivePrices,5000);
 
-function connect() {
-  if (es) { es.close(); es = null; }
-  es = new EventSource(API + '/api/stream');
-  es.onmessage = function(e) {
-    try {
-      var d = JSON.parse(e.data);
-      if (d.stats) renderStats(d.stats, d.botStatus, d.tradeStats);
-
-      // Bakiye koruma uyarısı
-      if (d.botStatus && d.botStatus.balance_floor_hit) {
-        var existing = document.getElementById('floor-banner');
-        if (!existing) {
-          var banner = document.createElement('div');
-          banner.id = 'floor-banner';
-          banner.style.cssText = 'position:fixed;top:0;left:0;right:0;background:#ff3355;color:#fff;text-align:center;padding:10px;font-family:IBM Plex Mono,monospace;font-size:13px;font-weight:600;z-index:9999;letter-spacing:.03em';
-          banner.textContent = '🚨 BAKİYE KORUMA AKTİF — $' + (d.botStatus.balance_floor || 1000) + ' eşiğine ulaşıldı — YENİ İŞLEM AÇILMIYOR';
-          document.body.appendChild(banner);
-          document.querySelector('.layout').style.marginTop = '40px';
-        }
-      } else {
-        var b = document.getElementById('floor-banner');
-        if (b) { b.remove(); document.querySelector('.layout').style.marginTop = '0'; }
-      }
-      var positions = (d.positions || []).map(function(p) {
-        var lp = _livePrices[p.symbol];
-        if (lp && lp > 0 && !p.is_adopted) {
-          var coinQty = (+(p.notional||0)) / (+(p.entry_price||1));
-          var margin  = (+(p.notional||0)) / (+(p.leverage||10));
-          var pnl     = p.side === 'long' ? (lp - (+(p.entry_price||0))) * coinQty : ((+(p.entry_price||0)) - lp) * coinQty;
-          var pnlP    = margin > 0 ? Math.round(pnl / margin * 10000) / 100 : 0;
-          return Object.assign({}, p, {current_price:lp, pnl:Math.round(pnl*100)/100, pnl_percent:pnlP});
+function connect(){
+  if(es){es.close();es=null;}
+  es=new EventSource(API+'/api/stream');
+  es.onmessage=function(e){
+    try{
+      var d=JSON.parse(e.data);
+      if(d.stats) renderStats(d.stats,d.botStatus,d.tradeStats);
+      var positions=(d.positions||[]).map(function(p){
+        var lp=_livePrices[p.symbol];
+        if(lp&&lp>0&&!p.is_adopted){
+          var coinQty=(+(p.notional||0))/(+(p.entry_price||1));
+          var margin=(+(p.notional||0))/(+(p.leverage||10));
+          var pnl=p.side==='long'?(lp-(+(p.entry_price||0)))*coinQty:((+(p.entry_price||0))-lp)*coinQty;
+          var pnlP=margin>0?Math.round(pnl/margin*10000)/100:0;
+          return Object.assign({},p,{current_price:lp,pnl:Math.round(pnl*100)/100,pnl_percent:pnlP});
         }
         return p;
       });
-      renderPositions(positions, 'pos-grid', 'pos-cnt');
-      renderPositions(positions, 'pos-grid2', 'pos-cnt2');
-      if (d.recentTrades && d.recentTrades.length) {
-        _trades = d.recentTrades;
+      renderPositions(positions,'pos-grid','pos-cnt');
+      renderPositions(positions,'pos-grid2','pos-cnt2');
+      if(d.recentTrades&&d.recentTrades.length){
+        _trades=d.recentTrades;
         render24hSummary(_trades);
-        var activePage = document.querySelector('.page.active');
-        if (activePage && activePage.id === 'page-history') renderHistoryRows(_trades, 'all');
+        var ap=document.querySelector('.page.active');
+        if(ap&&ap.id==='page-history') renderHistoryRows(_trades,'all');
       }
       tick++;
-      document.getElementById('last-upd').textContent = '\u00b70s once';
-      var activePage = document.querySelector('.page.active');
-      if (activePage && activePage.id === 'page-signal') renderSignalPage();
-      if (activePage && activePage.id === 'page-logs') renderLogs();
-    } catch(err) {}
+      document.getElementById('last-upd').textContent='\u00b70s';
+      var ap=document.querySelector('.page.active');
+      if(ap&&ap.id==='page-signal') renderSignalPage();
+      if(ap&&ap.id==='page-logs') renderLogs();
+    }catch(err){}
   };
-  es.onerror = function() { es.close(); setTimeout(connect, 5000); };
+  es.onerror=function(){es.close();setTimeout(connect,5000);};
 }
-
-setInterval(function() {
-  var el = document.getElementById('last-upd');
-  var m  = el.textContent.match(/\u00b7(\d+)/);
-  if (m) el.textContent = '\u00b7' + (+m[1] + 1) + 's once';
-}, 1000);
-
-renderLogs();
-connect();
+setInterval(function(){var el=document.getElementById('last-upd');var m=el.textContent.match(/\u00b7(\d+)/);if(m)el.textContent='\u00b7'+(+m[1]+1)+'s';},1000);
+renderLogs();connect();
 </script>
 </body>
 </html>
