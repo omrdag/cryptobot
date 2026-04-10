@@ -966,19 +966,56 @@ def run_grid_trading() -> None:
 BALANCE_FLOOR = float(os.getenv("BALANCE_FLOOR", "1000"))  # Bu seviyede tüm işlemler durur
 
 
-def _check_balance_floor(balance: float) -> bool:
-    """Bakiye koruma — $1000 altına düşünce sistemi durdur."""
+def _check_balance_floor(balance: float, positions: list = None) -> bool:
+    """Bakiye koruma — $1000 altına düşünce tüm pozisyonları kapat ve dur."""
     if balance <= BALANCE_FLOOR:
-        _log(f"🚨 BAKİYE KORUMA AKTIF — Bakiye ${balance:.2f} ≤ ${BALANCE_FLOOR:.2f} — TÜM İŞLEMLER DURDURULDU", "error")
-        _log(f"🚨 Yeni işlem açılmıyor. Manuel kontrol gerekiyor.", "error")
-        with _lock:
-            engine_state["balance_floor_hit"] = True
-            engine_state["balance_floor_at"]  = datetime.now(timezone.utc).isoformat()
+        already_hit = engine_state.get("balance_floor_hit", False)
+
+        if not already_hit:
+            _log(f"🚨 BAKİYE KORUMA AKTIF — Bakiye ${balance:.2f} ≤ ${BALANCE_FLOOR:.2f}", "error")
+            _log(f"🚨 Tüm pozisyonlar kapatılıyor...", "error")
+
+            # Tüm açık pozisyonları market emriyle kapat
+            if positions:
+                for p in positions:
+                    inst_id  = p.get("instId", "")
+                    side     = p.get("side", "long")
+                    qty      = p.get("qty", 0)
+                    close_side = "sell" if side == "long" else "buy"
+                    try:
+                        if not PAPER_TRADING and OKX_KEY and inst_id and qty > 0:
+                            close_position(inst_id, side, qty)
+                            _log(f"🔴 {inst_id} {side.upper()} kapatıldı (bakiye koruma)", "error")
+                        else:
+                            _log(f"[PAPER] {inst_id} {side.upper()} kapatılırdı (bakiye koruma)")
+                    except Exception as e:
+                        _log(f"❌ {inst_id} kapatılamadı: {e}", "error")
+
+            # Grid emirlerini iptal et
+            try:
+                for inst_id in GRID_COINS:
+                    gs = _grid_state.get(inst_id, {})
+                    if gs:
+                        _cancel_grid_orders(inst_id, gs.get("buy_order_ids", []))
+                        _cancel_grid_orders(inst_id, gs.get("sell_order_ids", []))
+                        gs["active"] = False
+                        _log(f"[GRID] {inst_id} emirleri iptal edildi (bakiye koruma)")
+            except Exception as e:
+                _log(f"[GRID] İptal hatası: {e}", "warning")
+
+            with _lock:
+                engine_state["balance_floor_hit"] = True
+                engine_state["balance_floor_at"]  = datetime.now(timezone.utc).isoformat()
+                engine_state["open_positions"]     = {}
+
         return True
+
+    # Bakiye toparlandıysa korumayı kaldır
     if engine_state.get("balance_floor_hit"):
-        _log(f"✅ Bakiye ${balance:.2f} — koruma kaldırıldı, sistem devam ediyor")
+        _log(f"✅ Bakiye ${balance:.2f} — $1000 üzerine çıktı, sistem devam ediyor")
         with _lock:
             engine_state["balance_floor_hit"] = False
+            engine_state["balance_floor_at"]  = None
     return False
 
 
@@ -1016,14 +1053,14 @@ def bot_loop():
             with _lock:
                 engine_state["balance"] = balance
 
-            # 1b. Bakiye koruma kontrolü — $1000 altında yeni işlem yok
-            if _check_balance_floor(balance):
+            # 2. Açık pozisyonları al
+            positions = get_open_positions()
+
+            # 2b. Bakiye koruma kontrolü — $1000 altında tüm pozisyonları kapat ve dur
+            if _check_balance_floor(balance, positions):
                 _log(f"⏸ Döngü #{loop_num} atlandı — bakiye koruma aktif (${balance:.2f})")
                 time.sleep(LOOP_SECONDS)
                 continue
-
-            # 2. Açık pozisyonları al
-            positions = get_open_positions()
 
             # 3. SL/TP kontrol
             signals_snap = engine_state.get("signals", {})
