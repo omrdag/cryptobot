@@ -332,12 +332,17 @@ def build_long_signal(
             f"Puan yetersiz ({score}/{effective_min}){session_note}: {' | '.join(reasons)}"
         )
 
-    # 6. SL / TP (ATR tabanlı, ATR×2.5 — daha geniş nefes alanı)
+    # 6. SL / TP — Range piyasası için optimize edildi
+    # SL: ATR×1.5 (dar, hızlı zarar kes)
+    # TP1: Risk×0.5 (çabuk kâr kilitle)
+    # TP2: Risk×1.0 (kalan pozisyon)
     entry_price = d["close"]
     atr         = d["atr"]
-    stop_loss   = entry_price - (atr * 2.5)    # ATR×2.5: küçük geri çekilmelerden etkilenmez
+    sl_mult     = float(os.getenv("SL_ATR_MULT", "1.5"))   # Varsayılan 1.5, ayarlanabilir
+    tp_mult     = float(os.getenv("TP_RR_MULT",  "1.0"))   # Varsayılan 1.0 R/R
+    stop_loss   = entry_price - (atr * sl_mult)
     risk        = entry_price - stop_loss
-    take_profit = entry_price + (risk * 1.6)   # RR = 1.6× (daha ulaşılabilir hedef)
+    take_profit = entry_price + (risk * tp_mult)
 
     return SignalResult(
         should_enter     = True,
@@ -346,7 +351,7 @@ def build_long_signal(
         entry_price      = entry_price,
         stop_loss        = stop_loss,
         take_profit      = take_profit,
-        min_hold_minutes = 30,
+        min_hold_minutes = 15,
         volume_ok        = _is_volume_confirmed(d),
     )
 
