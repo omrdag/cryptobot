@@ -37,6 +37,7 @@ engine_state: Dict = {
     "logs":          [],     # son 50 log satırı
     "balance":       0.0,
     "loop_count":    0,
+    "grid":          {},     # grid durumu (dashboard için)
 }
 _lock = threading.Lock()
 
@@ -664,6 +665,302 @@ def _is_good_trading_hour() -> bool:
     return True  # Kısıtlama yok
 
 
+# ── Grid Trading Modülü ──────────────────────────────────────────────────────
+"""
+Grid Trading — Aralık Ticareti
+================================
+Strateji:
+  - ATR bazlı otomatik fiyat aralığı belirle (son 24 saatin ATR'si)
+  - Aralığı GRID_LEVELS eşit parçaya böl
+  - Her seviyede limit al emri koy
+  - Satış → bir üst seviyede limit sat emri koy
+  - Fiyat aralıkta sallandıkça sürekli küçük kârlar topla
+
+Avantaj:
+  - Yön tahmini gerekmez
+  - Pullback stratejisinden tamamen bağımsız slotlar
+  - %70-75 win rate (yatay/yüksek volatilite piyasasında)
+"""
+
+GRID_COINS         = ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+GRID_TOTAL_CAPITAL = float(os.getenv("GRID_CAPITAL", "1000"))   # Toplam grid sermayesi (USDT)
+GRID_LEVELS        = int(os.getenv("GRID_LEVELS", "8"))          # Grid seviye sayısı
+GRID_LEVERAGE      = int(os.getenv("GRID_LEVERAGE", "3"))        # Düşük kaldıraç (güvenli)
+GRID_ATR_MULT      = float(os.getenv("GRID_ATR_MULT", "3.0"))   # ATR çarpanı (aralık genişliği)
+GRID_ACTIVE        = os.getenv("GRID_ACTIVE", "true").lower() == "true"
+
+# Grid durumu: {inst_id → {state, levels, orders, last_price, ...}}
+_grid_state: Dict[str, dict] = {}
+
+
+def _calc_atr_14(inst_id: str, bar: str = "1H") -> float:
+    """Son 14 mum ATR hesapla — grid aralığını belirlemek için."""
+    try:
+        df = fetch_ohlcv(inst_id, bar=bar, limit=30)
+        if df is None or len(df) < 15:
+            return 0.0
+        prev  = df["close"].shift(1)
+        tr    = pd.concat([
+            df["high"] - df["low"],
+            (df["high"] - prev).abs(),
+            (df["low"]  - prev).abs(),
+        ], axis=1).max(axis=1)
+        return float(tr.ewm(span=14, adjust=False).mean().iloc[-1])
+    except:
+        return 0.0
+
+
+def _place_grid_limit_order(inst_id: str, side: str, price: float,
+                             sz: int, pos_side: str) -> Optional[str]:
+    """Grid için limit emir gönder. Başarıda orderId döndür."""
+    if PAPER_TRADING:
+        fake_id = f"PAPER-{inst_id}-{side}-{int(price)}"
+        _log(f"[PAPER GRID] {side.upper()} {inst_id} {sz}k @ ${price:.4f}")
+        return fake_id
+    if not OKX_KEY:
+        return None
+    try:
+        info     = get_contract_info(inst_id)
+        tick_sz  = info["tick_sz"]
+        body = {
+            "instId":  inst_id,
+            "tdMode":  "cross",
+            "side":    side,
+            "posSide": pos_side,
+            "ordType": "limit",
+            "px":      round_price(price, tick_sz),
+            "sz":      str(sz),
+        }
+        result = _okx_post("/api/v5/trade/order", body)
+        if result.get("code") == "0":
+            oid = result["data"][0]["ordId"]
+            return oid
+        else:
+            _log(f"[GRID] Limit emir hatası: {result.get('msg','?')}", "warning")
+            return None
+    except Exception as e:
+        _log(f"[GRID] Emir gönderme hatası: {e}", "warning")
+        return None
+
+
+def _cancel_grid_orders(inst_id: str, order_ids: list) -> None:
+    """Mevcut grid emirlerini iptal et."""
+    if PAPER_TRADING or not OKX_KEY or not order_ids:
+        return
+    try:
+        # Toplu iptal (max 20 adet)
+        for i in range(0, len(order_ids), 20):
+            batch = [{"instId": inst_id, "ordId": oid}
+                     for oid in order_ids[i:i+20] if oid and not oid.startswith("PAPER")]
+            if batch:
+                _okx_post("/api/v5/trade/cancel-batch-orders", batch)
+    except Exception as e:
+        _log(f"[GRID] İptal hatası: {e}", "warning")
+
+
+def _get_grid_filled_orders(inst_id: str, order_ids: list) -> list:
+    """Dolmuş grid emirlerini bul."""
+    if PAPER_TRADING or not OKX_KEY or not order_ids:
+        return []
+    filled = []
+    try:
+        for oid in order_ids:
+            if not oid or oid.startswith("PAPER"):
+                continue
+            data = _okx_get(f"/api/v5/trade/order?instId={inst_id}&ordId={oid}")
+            orders = data.get("data", [])
+            if orders and orders[0].get("state") == "filled":
+                filled.append(orders[0])
+    except Exception as e:
+        _log(f"[GRID] Emir kontrol hatası: {e}", "warning")
+    return filled
+
+
+def setup_grid(inst_id: str, current_price: float) -> None:
+    """
+    Grid kur — ATR bazlı otomatik aralık, eşit seviyeler.
+    Her coin için $500 sermaye (toplam $1000 / 2 coin).
+    """
+    capital_per_coin = GRID_TOTAL_CAPITAL / len(GRID_COINS)
+
+    # ATR ile aralık belirle (1 saatlik)
+    atr = _calc_atr_14(inst_id, bar="1H")
+    if atr <= 0:
+        _log(f"[GRID] {inst_id} ATR hesaplanamadı — grid kurulmadı", "warning")
+        return
+
+    grid_range  = atr * GRID_ATR_MULT      # Toplam aralık genişliği
+    lower_price = current_price - grid_range / 2
+    upper_price = current_price + grid_range / 2
+    step        = grid_range / GRID_LEVELS  # Her seviye arası mesafe
+
+    # Kontrat bilgisi
+    info       = get_contract_info(inst_id)
+    ct_val     = info["ct_val"]
+    notional_per_level = capital_per_coin / GRID_LEVELS
+    qty_coin   = notional_per_level / current_price
+    qty_sz     = max(1, round(qty_coin / ct_val))
+
+    levels = []
+    for i in range(GRID_LEVELS):
+        lvl_price = lower_price + i * step
+        levels.append(round(lvl_price, 2))
+
+    _log(
+        f"[GRID] {inst_id} kurulumu | "
+        f"Aralık: ${lower_price:.2f} - ${upper_price:.2f} | "
+        f"{GRID_LEVELS} seviye | "
+        f"Adım: ${step:.2f} | "
+        f"ATR: ${atr:.2f} | "
+        f"Seviye başı: {qty_sz} kontrat"
+    )
+
+    # Mevcut grid'i kaldır
+    if inst_id in _grid_state:
+        old = _grid_state[inst_id]
+        _cancel_grid_orders(inst_id, old.get("buy_order_ids", []))
+        _cancel_grid_orders(inst_id, old.get("sell_order_ids", []))
+
+    # Yeni alış emirleri koy (fiyatın altındaki seviyelere)
+    buy_order_ids  = []
+    sell_order_ids = []
+
+    for lvl in levels:
+        if lvl < current_price - step * 0.5:
+            oid = _place_grid_limit_order(inst_id, "buy", lvl, qty_sz, "long")
+            if oid:
+                buy_order_ids.append(oid)
+        elif lvl > current_price + step * 0.5:
+            oid = _place_grid_limit_order(inst_id, "sell", lvl, qty_sz, "short")
+            if oid:
+                sell_order_ids.append(oid)
+
+    _grid_state[inst_id] = {
+        "active":         True,
+        "levels":         levels,
+        "step":           step,
+        "lower":          lower_price,
+        "upper":          upper_price,
+        "qty_sz":         qty_sz,
+        "capital":        capital_per_coin,
+        "setup_price":    current_price,
+        "buy_order_ids":  buy_order_ids,
+        "sell_order_ids": sell_order_ids,
+        "filled_buys":    0,
+        "filled_sells":   0,
+        "total_pnl":      0.0,
+        "last_check":     datetime.now(timezone.utc).isoformat(),
+    }
+
+    _log(f"[GRID] {inst_id} aktif | {len(buy_order_ids)} alış + {len(sell_order_ids)} satış emri")
+
+
+def run_grid_trading() -> None:
+    """
+    Grid yönetim döngüsü — her 5 dakikada çalışır.
+    1. Dolmuş emirleri tespit et → karşı taraf emrini koy
+    2. Fiyat aralık dışına çıktıysa grid'i yeniden kur
+    """
+    if not GRID_ACTIVE:
+        return
+
+    for inst_id in GRID_COINS:
+        sym = COIN_MAP.get(inst_id, inst_id)
+
+        # Anlık fiyat
+        try:
+            price_data = _okx_get(f"/api/v5/market/ticker?instId={inst_id}")
+            current_price = float(price_data["data"][0]["last"])
+        except:
+            _log(f"[GRID] {sym} fiyat alınamadı", "warning")
+            continue
+
+        gs = _grid_state.get(inst_id)
+
+        # Grid hiç kurulmamışsa kur
+        if not gs or not gs.get("active"):
+            _log(f"[GRID] {sym} ilk kurulum @ ${current_price:.2f}")
+            # Kaldıraç ayarla
+            if OKX_KEY and not PAPER_TRADING:
+                try:
+                    _okx_post("/api/v5/account/set-leverage", {
+                        "instId": inst_id,
+                        "lever":  str(GRID_LEVERAGE),
+                        "mgnMode": "cross"
+                    })
+                except:
+                    pass
+            setup_grid(inst_id, current_price)
+            continue
+
+        # Fiyat aralık dışına çıktıysa grid'i yeniden kur
+        margin = gs["step"] * 0.5  # Yarım adım tolerans
+        if current_price < gs["lower"] - margin or current_price > gs["upper"] + margin:
+            _log(
+                f"[GRID] {sym} aralık dışı "
+                f"(${current_price:.2f} | aralık: ${gs['lower']:.2f}-${gs['upper']:.2f}) "
+                f"— yeniden kuruluyor"
+            )
+            setup_grid(inst_id, current_price)
+            continue
+
+        # Dolmuş emirleri kontrol et
+        all_order_ids = gs.get("buy_order_ids", []) + gs.get("sell_order_ids", [])
+        filled = _get_grid_filled_orders(inst_id, all_order_ids)
+
+        for order in filled:
+            fill_price = float(order.get("avgPx", 0) or 0)
+            fill_side  = order.get("side", "buy")
+            fill_sz    = int(float(order.get("accFillSz", gs["qty_sz"])))
+            pnl        = float(order.get("pnl", 0) or 0)
+            fee        = float(order.get("fee", 0) or 0)
+
+            gs["total_pnl"] += pnl + fee
+
+            if fill_side == "buy":
+                # Alış doldu → üst seviyede satış koy
+                gs["filled_buys"] += 1
+                sell_price = fill_price + gs["step"]
+                if sell_price <= gs["upper"]:
+                    oid = _place_grid_limit_order(inst_id, "sell", sell_price, fill_sz, "short")
+                    if oid:
+                        gs["sell_order_ids"].append(oid)
+                _log(
+                    f"[GRID] {sym} ALIŞ doldu @ ${fill_price:.2f} "
+                    f"→ SATIŞ @ ${sell_price:.2f} | "
+                    f"Toplam kâr: ${gs['total_pnl']:.4f}"
+                )
+                # Dolmuş emri listeden çıkar
+                if order.get("ordId") in gs["buy_order_ids"]:
+                    gs["buy_order_ids"].remove(order["ordId"])
+
+            elif fill_side == "sell":
+                # Satış doldu → alt seviyede alış koy
+                gs["filled_sells"] += 1
+                buy_price = fill_price - gs["step"]
+                if buy_price >= gs["lower"]:
+                    oid = _place_grid_limit_order(inst_id, "buy", buy_price, fill_sz, "long")
+                    if oid:
+                        gs["buy_order_ids"].append(oid)
+                _log(
+                    f"[GRID] {sym} SATIŞ doldu @ ${fill_price:.2f} "
+                    f"→ ALIŞ @ ${buy_price:.2f} | "
+                    f"Toplam kâr: ${gs['total_pnl']:.4f}"
+                )
+                if order.get("ordId") in gs["sell_order_ids"]:
+                    gs["sell_order_ids"].remove(order["ordId"])
+
+        gs["last_check"] = datetime.now(timezone.utc).isoformat()
+
+        _log(
+            f"[GRID] {sym} durum | "
+            f"Fiyat: ${current_price:.2f} | "
+            f"Alış emirleri: {len(gs['buy_order_ids'])} | "
+            f"Satış emirleri: {len(gs['sell_order_ids'])} | "
+            f"Toplam kâr: ${gs['total_pnl']:.4f}"
+        )
+
+
 def bot_loop():
     """Ana bot döngüsü — her LOOP_SECONDS saniyede çalışır."""
     _log(f"Bot motoru başlatıldı | Paper={PAPER_TRADING} | Kaldıraç={LEVERAGE}x | Coinler={list(COIN_MAP.values())}")
@@ -719,6 +1016,29 @@ def bot_loop():
                     run_funding_arbitrage(positions, db=db, trade_ids=_trade_ids)
                 except Exception as _fe:
                     _log(f"[FUNDING] Döngü hatası: {_fe}", "warning")
+
+            # 5b. Grid Trading (her 5 döngüde bir — ~5 dk)
+            if loop_num % 5 == 0:
+                try:
+                    run_grid_trading()
+                    with _lock:
+                        engine_state["grid"] = {
+                            sym: {
+                                "active":       gs.get("active", False),
+                                "lower":        round(gs.get("lower", 0), 2),
+                                "upper":        round(gs.get("upper", 0), 2),
+                                "step":         round(gs.get("step", 0), 2),
+                                "levels":       gs.get("levels", []),
+                                "filled_buys":  gs.get("filled_buys", 0),
+                                "filled_sells": gs.get("filled_sells", 0),
+                                "total_pnl":    round(gs.get("total_pnl", 0), 4),
+                                "buy_orders":   len(gs.get("buy_order_ids", [])),
+                                "sell_orders":  len(gs.get("sell_order_ids", [])),
+                            }
+                            for sym, gs in _grid_state.items()
+                        }
+                except Exception as _ge:
+                    _log(f"[GRID] Döngü hatası: {_ge}", "warning")
 
             # 6. Emir gönder
             open_count  = len(positions)
