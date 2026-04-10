@@ -478,7 +478,7 @@ FUNDING_COINS   = ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
 FUNDING_NOTIONAL = float(os.getenv("FUNDING_NOTIONAL", "1000"))  # USDT
 
 # Eşikler
-FUNDING_ENTRY_THRESHOLD  = float(os.getenv("FUNDING_ENTRY_PCT", "0.03"))   # %0.03 — giriş eşiği
+FUNDING_ENTRY_THRESHOLD  = float(os.getenv("FUNDING_ENTRY_PCT", "0.01"))   # %0.01 — giriş eşiği (düşürüldü, daha aktif)
 FUNDING_EXIT_THRESHOLD   = float(os.getenv("FUNDING_EXIT_PCT",  "0.01"))   # %0.01 — çıkış eşiği (nötrleşince kapat)
 FUNDING_MAX_SL_PCT        = 0.005   # %0.5 — maks zarar (dar SL)
 FUNDING_LEVERAGE          = 3       # 3x — düşük kaldıraç (yön riski minimize)
@@ -1092,15 +1092,15 @@ def bot_loop():
                 engine_state["signals"]    = signals
                 engine_state["last_scan"]  = datetime.now(timezone.utc).isoformat()
 
-            # 5. Funding Rate Arbitrage (her 5 döngüde bir — ~5 dk)
-            if loop_num % 5 == 0:
+            # 5. Funding Rate Arbitrage (ilk döngüde + her 5 döngüde bir)
+            if loop_num == 1 or loop_num % 5 == 0:
                 try:
                     run_funding_arbitrage(positions, db=db, trade_ids=_trade_ids)
                 except Exception as _fe:
                     _log(f"[FUNDING] Döngü hatası: {_fe}", "warning")
 
-            # 5b. Grid Trading (her 5 döngüde bir — ~5 dk)
-            if loop_num % 5 == 0:
+            # 5b. Grid Trading (ilk döngüde + her 5 döngüde bir)
+            if loop_num == 1 or loop_num % 5 == 0:
                 try:
                     run_grid_trading()
                     with _lock:
