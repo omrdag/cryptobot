@@ -259,76 +259,61 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
         else:
             _log(f"⚠️ SL ayarlanamadı: {sl_result.get('msg','?')}", "warning")
 
-    # ── 3. TP1 — %50 kısmi kâr alma ──────────────────────────────────────────
-    if tp1_price > 0:
-        tp1_qty  = max(1, int(qty_contract * 0.50))  # %50
-        tp1_side = "sell" if pos_side == "long" else "buy"
-        tp1_body = {
-            "instId":     inst_id,
-            "tdMode":     "cross",
-            "side":       tp1_side,
-            "posSide":    pos_side,
-            "ordType":    "conditional",
-            "sz":         str(tp1_qty),
-            "tpTriggerPx": round_price(tp1_price, tick_sz),
-            "tpOrdPx":     "-1",
-            "tpTriggerPxType": "mark",
-        }
-        tp1_result = _okx_post("/api/v5/trade/order-algo", tp1_body)
-        if tp1_result.get("code") == "0":
-            _log(f"🎯 TP1 ayarlandı: ${tp1_price:.4f} (%50 kapat)")
-        else:
-            _log(f"⚠️ TP1 ayarlanamadı: {tp1_result.get('msg','?')}", "warning")
+    # ── 3. Trailing Stop — fiyat peşinden giden SL ────────────────────────────
+    # TP sabit hedef yerine trailing stop kullan:
+    # - callbackRatio: fiyat zirveye göre bu kadar geri çekilince kapat
+    # - activePx: bu fiyata ulaşınca trailing stop aktif olur
+    # Örnek: Giriş $2179, active=$2191 (+%0.55), callback=%0.4
+    # → Fiyat $2191'e gelir, trailing başlar, $2182'ye düşünce satar
+    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.003"))  # %0.3 aktivasyon
+    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.002"))  # %0.2 geri çekilme
 
-    # ── 4. TP2 — kalan %50 tam çıkış ─────────────────────────────────────────
-    if tp2_price > 0:
-        tp2_qty  = int(qty_contract) - (max(1, int(qty_contract * 0.50)))
-        if tp2_qty > 0:
-            tp2_side = "sell" if pos_side == "long" else "buy"
-            tp2_body = {
-                "instId":     inst_id,
-                "tdMode":     "cross",
-                "side":       tp2_side,
-                "posSide":    pos_side,
-                "ordType":    "conditional",
-                "sz":         str(tp2_qty),
-                "tpTriggerPx": round_price(tp2_price, tick_sz),
-                "tpOrdPx":     "-1",
-                "tpTriggerPxType": "mark",
-            }
-            tp2_result = _okx_post("/api/v5/trade/order-algo", tp2_body)
-            if tp2_result.get("code") == "0":
-                _log(f"🎯 TP2 ayarlandı: ${tp2_price:.4f} (kalan kapat)")
-            else:
-                _log(f"⚠️ TP2 ayarlanamadı: {tp2_result.get('msg','?')}", "warning")
+    if pos_side == "long":
+        trail_active_px = price * (1 + TRAIL_ACTIVATION_PCT)
+        trail_side      = "sell"
+    else:
+        trail_active_px = price * (1 - TRAIL_ACTIVATION_PCT)
+        trail_side      = "buy"
 
-    # ── 5. Breakeven SL — TP1 tetiklenince SL giriş fiyatına çekil ───────────
-    # OKX'te TP1 tetiklendiğinde kalan pozisyon için SL'yi breakeven'e çek
-    # Bu "move SL to entry" algo emriyle yapılır
-    if tp1_price > 0 and sl_price > 0:
-        be_side = "sell" if pos_side == "long" else "buy"
-        be_qty  = int(qty_contract) - max(1, int(qty_contract * 0.50))
-        if be_qty > 0:
-            # TP1 fiyatı tetiklenince SL'yi giriş fiyatına çeken OCO benzeri emir
-            # OKX'te bu "conditional" order ile yapılır: TP1 trigger → SL = entry
-            be_body = {
-                "instId":        inst_id,
-                "tdMode":        "cross",
-                "side":          be_side,
-                "posSide":       pos_side,
-                "ordType":       "conditional",
-                "sz":            str(be_qty),
-                "slTriggerPx":   round_price(price, tick_sz),  # SL = giriş fiyatı
-                "slOrdPx":       "-1",
-                "slTriggerPxType": "mark",
-                # Bu emir TP1 tetiklenince aktif olacak şekilde ayarla
-                "activePx":      round_price(tp1_price, tick_sz),
+    trail_body = {
+        "instId":        inst_id,
+        "tdMode":        "cross",
+        "side":          trail_side,
+        "posSide":       pos_side,
+        "ordType":       "move_order_stop",   # OKX trailing stop emir tipi
+        "sz":            str(int(qty_contract)),
+        "activePx":      round_price(trail_active_px, tick_sz),
+        "callbackRatio": str(TRAIL_CALLBACK_PCT),
+    }
+    trail_result = _okx_post("/api/v5/trade/order-algo", trail_body)
+    if trail_result.get("code") == "0":
+        _log(f"🎯 Trailing Stop ayarlandı: aktif=${trail_active_px:.4f} (+%{TRAIL_ACTIVATION_PCT*100:.1f}) | geri çekilme=%{TRAIL_CALLBACK_PCT*100:.1f}")
+    else:
+        _log(f"⚠️ Trailing Stop ayarlanamadı: {trail_result.get('msg','?')} — TP1/TP2 ile devam", "warning")
+        # Trailing başarısız olursa TP1/TP2 algo emirlerine düş
+        if tp1_price > 0:
+            tp1_qty  = max(1, int(qty_contract * 0.50))
+            tp1_side = "sell" if pos_side == "long" else "buy"
+            tp1_body = {
+                "instId": inst_id, "tdMode": "cross", "side": tp1_side,
+                "posSide": pos_side, "ordType": "conditional",
+                "sz": str(tp1_qty),
+                "tpTriggerPx": round_price(tp1_price, tick_sz),
+                "tpOrdPx": "-1", "tpTriggerPxType": "mark",
             }
-            be_result = _okx_post("/api/v5/trade/order-algo", be_body)
-            if be_result.get("code") == "0":
-                _log(f"🔒 Breakeven SL ayarlandı: TP1 tetiklenince SL=${price:.4f} (giriş fiyatı)")
-            else:
-                _log(f"⚠️ Breakeven SL ayarlanamadı (devam): {be_result.get('msg','?')}", "warning")
+            _okx_post("/api/v5/trade/order-algo", tp1_body)
+        if tp2_price > 0:
+            tp2_qty = int(qty_contract) - max(1, int(qty_contract * 0.50))
+            if tp2_qty > 0:
+                tp2_side = "sell" if pos_side == "long" else "buy"
+                tp2_body = {
+                    "instId": inst_id, "tdMode": "cross", "side": tp2_side,
+                    "posSide": pos_side, "ordType": "conditional",
+                    "sz": str(tp2_qty),
+                    "tpTriggerPx": round_price(tp2_price, tick_sz),
+                    "tpOrdPx": "-1", "tpTriggerPxType": "mark",
+                }
+                _okx_post("/api/v5/trade/order-algo", tp2_body)
 
     return True
 
