@@ -30,14 +30,16 @@ MAX_POSITIONS  = int(os.getenv("MAX_POSITIONS", "3"))
 
 # ── Paylaşılan durum (mock_api ile ortak) ─────────────────────────────────────
 engine_state: Dict = {
-    "running":       False,
-    "last_scan":     None,
-    "signals":       {},     # symbol → son sinyal detayı
-    "open_positions": {},    # symbol → pozisyon detayı
-    "logs":          [],     # son 50 log satırı
-    "balance":       0.0,
-    "loop_count":    0,
-    "grid":          {},     # grid durumu (dashboard için)
+    "running":            False,
+    "last_scan":          None,
+    "signals":            {},
+    "open_positions":     {},
+    "logs":               [],
+    "balance":            0.0,
+    "loop_count":         0,
+    "grid":               {},
+    "balance_floor_hit":  False,
+    "balance_floor_at":   None,
 }
 _lock = threading.Lock()
 
@@ -961,6 +963,25 @@ def run_grid_trading() -> None:
         )
 
 
+BALANCE_FLOOR = float(os.getenv("BALANCE_FLOOR", "1000"))  # Bu seviyede tüm işlemler durur
+
+
+def _check_balance_floor(balance: float) -> bool:
+    """Bakiye koruma — $1000 altına düşünce sistemi durdur."""
+    if balance <= BALANCE_FLOOR:
+        _log(f"🚨 BAKİYE KORUMA AKTIF — Bakiye ${balance:.2f} ≤ ${BALANCE_FLOOR:.2f} — TÜM İŞLEMLER DURDURULDU", "error")
+        _log(f"🚨 Yeni işlem açılmıyor. Manuel kontrol gerekiyor.", "error")
+        with _lock:
+            engine_state["balance_floor_hit"] = True
+            engine_state["balance_floor_at"]  = datetime.now(timezone.utc).isoformat()
+        return True
+    if engine_state.get("balance_floor_hit"):
+        _log(f"✅ Bakiye ${balance:.2f} — koruma kaldırıldı, sistem devam ediyor")
+        with _lock:
+            engine_state["balance_floor_hit"] = False
+    return False
+
+
 def bot_loop():
     """Ana bot döngüsü — her LOOP_SECONDS saniyede çalışır."""
     _log(f"Bot motoru başlatıldı | Paper={PAPER_TRADING} | Kaldıraç={LEVERAGE}x | Coinler={list(COIN_MAP.values())}")
@@ -994,6 +1015,12 @@ def bot_loop():
             balance = get_balance()
             with _lock:
                 engine_state["balance"] = balance
+
+            # 1b. Bakiye koruma kontrolü — $1000 altında yeni işlem yok
+            if _check_balance_floor(balance):
+                _log(f"⏸ Döngü #{loop_num} atlandı — bakiye koruma aktif (${balance:.2f})")
+                time.sleep(LOOP_SECONDS)
+                continue
 
             # 2. Açık pozisyonları al
             positions = get_open_positions()
