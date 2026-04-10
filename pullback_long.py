@@ -273,13 +273,15 @@ def build_long_signal(
     min_score: int  = 7,
     df_5m:     "pd.DataFrame | None" = None,
     df_15m:    "pd.DataFrame | None" = None,
+    df_1h:     "pd.DataFrame | None" = None,
 ) -> SignalResult:
     """
     Tüm filtrelerden geçen yüksek kalite BUY sinyali üretir.
 
-    Yeni parametreler (MTF):
-      df_5m  — 5 dakikalık OHLCV (opsiyonel, trend onayı için)
-      df_15m — 15 dakikalık OHLCV (opsiyonel, ana trend için)
+    MTF parametreleri:
+      df_5m  — 5 dakikalık OHLCV (trend onayı)
+      df_15m — 15 dakikalık OHLCV (ana trend)
+      df_1h  — 1 saatlik OHLCV (rejim tespiti + üst trend)
     """
     # 1. Günlük limit
     if state.daily_trade_count >= state.max_daily_trades:
@@ -297,11 +299,32 @@ def build_long_signal(
             f"{symbol} geçici yasaklı ({streak} art arda kayıp)"
         )
 
+    # ── YENİ: ADX Rejim Tespiti ─────────────────────────────────────────────
+    # 1H veri varsa piyasa rejimini tespit et
+    # ADX < 20 → yatay/range piyasası → Pullback stratejisi çalışmaz → geç
+    # ADX 20-25 → zayıf trend → dikkatli
+    # ADX > 25 → güçlü trend → ideal Pullback koşulu
+    ADX_MIN_TREND = float(os.getenv("ADX_MIN_TREND", "20"))  # Railway ile ayarlanabilir
+    adx_1h = 0.0
+    if df_1h is not None and len(df_1h) >= 20:
+        try:
+            ind_1h = _extract_indicators(df_1h)
+            if ind_1h:
+                adx_1h = ind_1h.get("adx", 0.0)
+                if adx_1h < ADX_MIN_TREND:
+                    return SignalResult(
+                        False, 0,
+                        f"✗ Rejim: YATAY PİYASA (1H ADX={adx_1h:.1f} < {ADX_MIN_TREND}) "
+                        f"— Pullback stratejisi devre dışı, Grid+Funding çalışsın"
+                    )
+        except Exception:
+            pass  # 1H veri hatası → devam et, bu filtre atlanır
+
     # 4. Piyasa saati filtresi — düşük hacim saatlerinde min_score artır
-    session_ok = _is_good_session(hour_utc)
+    session_ok   = _is_good_session(hour_utc)
     effective_min = min_score if session_ok else min_score + 1
 
-    # 5. MTF trend onayı (opsiyonel — df_5m veya df_15m varsa)
+    # 5. MTF trend onayı — 5dk + 15dk + 1H
     mtf_bonus = 0
     mtf_notes = []
     if df_5m is not None and len(df_5m) >= 55:
@@ -311,6 +334,7 @@ def build_long_signal(
             mtf_notes.append("✓ 5dk trend yukarı")
         elif ind5:
             mtf_notes.append("✗ 5dk trend olumsuz")
+
     if df_15m is not None and len(df_15m) >= 55:
         ind15 = _extract_indicators(df_15m)
         if ind15 and _is_trend_up(ind15):
@@ -318,6 +342,19 @@ def build_long_signal(
             mtf_notes.append("✓ 15dk trend yukarı")
         elif ind15:
             mtf_notes.append("✗ 15dk trend olumsuz")
+
+    # ── YENİ: 1H trend teyidi (4. MTF katmanı) ───────────────────────────────
+    # 1H EMA9 > EMA21 → üst trend yönü Long ile uyumlu → +1 bonus puan
+    if df_1h is not None and len(df_1h) >= 55:
+        try:
+            ind_1h = _extract_indicators(df_1h)
+            if ind_1h and _is_trend_up(ind_1h):
+                mtf_bonus += 1
+                mtf_notes.append(f"✓ 1H trend yukarı (ADX={adx_1h:.1f})")
+            elif ind_1h:
+                mtf_notes.append(f"✗ 1H trend olumsuz (ADX={adx_1h:.1f})")
+        except Exception:
+            pass
 
     # 6. Ana timeframe skor hesapla
     score, reasons = _calculate_signal_score(d, hour_utc=hour_utc)
@@ -483,12 +520,14 @@ class PullbackLongStrategy(BaseStrategy):
         hour_utc: Optional[int]  = None,
         df_5m:    "pd.DataFrame | None" = None,
         df_15m:   "pd.DataFrame | None" = None,
+        df_1h:    "pd.DataFrame | None" = None,
     ) -> SignalResult:
         """
         Tam sinyal üretimi.
-        df      — 1dk OHLCV (ana timeframe)
-        df_5m   — 5dk OHLCV (MTF trend onayı, opsiyonel)
-        df_15m  — 15dk OHLCV (MTF ana trend, opsiyonel)
+        df     — 1dk OHLCV (ana timeframe)
+        df_5m  — 5dk OHLCV (MTF trend onayı)
+        df_15m — 15dk OHLCV (MTF ana trend)
+        df_1h  — 1H OHLCV (ADX rejim tespiti + üst trend)
         """
         from datetime import datetime, timezone
         if hour_utc is None:
@@ -508,6 +547,7 @@ class PullbackLongStrategy(BaseStrategy):
             min_score = self.min_score,
             df_5m     = df_5m,
             df_15m    = df_15m,
+            df_1h     = df_1h,
         )
         self.last_result = result
 
