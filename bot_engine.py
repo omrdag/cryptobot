@@ -963,7 +963,7 @@ def run_grid_trading() -> None:
         )
 
 
-BALANCE_FLOOR = float(os.getenv("BALANCE_FLOOR", "1000"))  # Bu seviyede tüm işlemler durur
+BALANCE_FLOOR = float(os.getenv("BALANCE_FLOOR", "0"))  # 0 = devre dışı
 
 
 def _check_balance_floor(balance: float, positions: list = None) -> bool:
