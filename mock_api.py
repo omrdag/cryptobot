@@ -252,6 +252,7 @@ def build_payload():
             "positions":    list(_positions),
             "recentTrades": list(_recent_trades[:50]),
             "tradeStats":   dict(ts),
+            "signals":      eng.get("signals", {}),
             "stats": {
                 **dict(_stats),
                 "winRate":       ts.get("winRate",       _stats.get("winRate", 0)),
@@ -321,8 +322,12 @@ def get_signals():
     if not _bot_active: return JSONResponse({})
     return JSONResponse(bot_engine.engine_state.get("signals", {}))
 
-@app.get("/api/logs")
-def get_logs():
+@app.get("/api/signals")
+def get_signals():
+    if not _bot_active:
+        return JSONResponse({})
+    sigs = bot_engine.engine_state.get("signals", {})
+    return JSONResponse(sigs)
     if not _bot_active: return JSONResponse([])
     return JSONResponse(bot_engine.engine_state.get("logs", []))
 
