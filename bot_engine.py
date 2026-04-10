@@ -385,16 +385,17 @@ def run_signals(positions: list) -> dict:
             _log(f"{sym}: yetersiz 1dk veri ({len(df) if df is not None else 0} bar)")
             continue
 
-        # MTF: 5dk ve 15dk
+        # MTF: 5dk, 15dk ve 1H (ADX rejim tespiti + üst trend)
         df_5m  = fetch_ohlcv(inst_id, bar="5m",  limit=80)
         df_15m = fetch_ohlcv(inst_id, bar="15m", limit=80)
+        df_1h  = fetch_ohlcv(inst_id, bar="1H",  limit=60)  # 1 saatlik — rejim tespiti
 
         hour_utc = datetime.now(timezone.utc).hour
 
-        # Long sinyal (MTF ile)
+        # Long sinyal (MTF + 1H rejim tespiti ile)
         long_res = long_strat.generate(
             df, symbol=sym, hour_utc=hour_utc,
-            df_5m=df_5m, df_15m=df_15m
+            df_5m=df_5m, df_15m=df_15m, df_1h=df_1h
         )
         # Short sinyal
         short_res = short_strat.generate(df, symbol=sym, hour_utc=hour_utc)
