@@ -206,7 +206,8 @@ html,body{height:100%;background:var(--bg);color:var(--text);font-family:'IBM Pl
       <div class="topbar-right">
         <button class="tbtn" id="bot-btn" onclick="toggleBot()">&#9679; Bot Durduruldu</button>
         <button class="tbtn danger">&#9888; Live</button>
-        <button class="tbtn warn">&#128276; Ses</button>
+        <button class="tbtn warn" id="sound-btn" onclick="toggleSound()">&#128276; Ses</button>
+        <button class="tbtn" id="notif-btn" onclick="toggleNotif()" style="border-color:#3d8eff30;color:var(--accent2)">&#128243; Bildirim</button>
       </div>
     </div>
 
@@ -661,18 +662,20 @@ function renderSignalPage(){
     var sig=sigs[sym]||{};
     var lScore=sig.long?+(sig.long.score||0):0, sScore=sig.short?+(sig.short.score||0):0;
     var best=Math.max(lScore,sScore);
+    var lReason=sig.long?(sig.long.reason||''):'';
+    var isYatay=lReason.indexOf('YATAY')>-1||lReason.indexOf('ADX')>-1||lReason.indexOf('Rejim')>-1;
     var isLong=sig.long&&sig.long.enter, isShort=sig.short&&sig.short.enter, inPos=sig.in_position;
     var stlbl,stcls;
     if(inPos){stlbl='AKTIF';stcls='st-active';}
     else if(isLong||isShort){stlbl='SINYAL';stcls='st-active';readyCount++;}
+    else if(isYatay){stlbl='YATAY';stcls='st-watch';}
     else if(best>=9){stlbl='YAKLISIYOR';stcls='st-approach';approachCount++;}
     else{stlbl='IZLEME';stcls='st-watch';}
-    var color=best>=9?'var(--accent)':best>=7?'var(--gold)':'var(--danger)';
+    var color=best>=9?'var(--accent)':best>=7?'var(--gold)':isYatay?'var(--dim)':'var(--danger)';
     var lp=_livePrices[sym]||0;
     var reason=sig.long?(sig.long.reason||''):'';
     var rShort=sig.short?(sig.short.reason||''):'';
     var bestReason=best===lScore?reason:rShort;
-    // ✓ karakterine göre parse et (Türkçe karakter encoding sorununu önler)
     var checks={
       trend:    bestReason.indexOf('\u2713 Trend')>-1,
       pullback: bestReason.indexOf('\u2713 Pullback')>-1,
@@ -682,8 +685,12 @@ function renderSignalPage(){
       mtf5:     bestReason.indexOf('\u2713 5dk')>-1,
       mtf15:    bestReason.indexOf('\u2713 15dk')>-1
     };
-    var ck=function(ok,lbl){return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;margin-right:2px;font-family:IBM Plex Mono,monospace;background:'+(ok?'#00e5a015':'#ff2d5515')+';color:'+(ok?'var(--accent)':'var(--danger)')+';border:1px solid '+(ok?'#00e5a025':'#ff2d5525')+'">'+(ok?'&#10003;':'&#10007;')+' '+lbl+'</span>';};
-    var entry=isLong&&sig.long&&sig.long.sl?'<div style="font-size:9px;color:var(--dim);margin-top:4px;font-family:IBM Plex Mono,monospace">Giris: $'+(+(sig.long.entry||0)).toFixed(4)+' &bull; SL: $'+(+(sig.long.sl||0)).toFixed(4)+'</div>':'';
+    var ck=function(ok,lbl){
+      if(isYatay) return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;margin-right:2px;font-family:IBM Plex Mono,monospace;background:var(--s2);color:var(--dim);border:1px solid var(--border)">&#8213; '+lbl+'</span>';
+      return '<span style="font-size:9px;padding:1px 5px;border-radius:3px;margin-right:2px;font-family:IBM Plex Mono,monospace;background:'+(ok?'#00e5a015':'#ff2d5515')+';color:'+(ok?'var(--accent)':'var(--danger)')+';border:1px solid '+(ok?'#00e5a025':'#ff2d5525')+'">'+(ok?'&#10003;':'&#10007;')+' '+lbl+'</span>';
+    };
+    var adxNote=isYatay?'<div style="font-size:9px;color:var(--dim);margin-top:4px;font-family:IBM Plex Mono,monospace;font-style:italic">'+lReason.substring(0,80)+'</div>':'';
+    var entry=!isYatay&&isLong&&sig.long&&sig.long.sl?'<div style="font-size:9px;color:var(--dim);margin-top:4px;font-family:IBM Plex Mono,monospace">Giris: $'+(+(sig.long.entry||0)).toFixed(4)+' &bull; SL: $'+(+(sig.long.sl||0)).toFixed(4)+'</div>':'';
     return '<div style="display:block;padding:10px 14px;border-bottom:1px solid var(--border);cursor:pointer;transition:background .12s" onmouseover="this.style.background=\'var(--s2)\'" onmouseout="this.style.background=\'\'" onclick="selectCoin(\''+sym+'\')">'
       +'<div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">'
         +'<div style="display:flex;align-items:center;gap:8px">'
@@ -700,13 +707,19 @@ function renderSignalPage(){
       +'</div>'
       +'<div style="margin-bottom:5px">'+ck(checks.trend,'Trend')+ck(checks.pullback,'Pullback')+ck(checks.momentum,'Mom.')+ck(checks.volume,'Hacim')+ck(checks.vwap,'VWAP')+ck(checks.mtf5,'5dk')+ck(checks.mtf15,'15dk')+'</div>'
       +'<div style="display:flex;align-items:center;gap:6px"><div style="flex:1;height:4px;background:var(--s3);border-radius:2px;overflow:hidden"><div style="height:100%;border-radius:2px;background:'+color+';width:'+Math.min(100,best/11*100)+'%"></div></div><span style="font-size:9px;color:var(--dim);font-family:IBM Plex Mono,monospace">%'+Math.round(best/11*100)+'</span></div>'
-      +entry+'</div>';
+      +adxNote+entry+'</div>';
   }).join('');
   document.getElementById('sig-rows').innerHTML=html;
   document.getElementById('si-ready').textContent=readyCount;
   document.getElementById('si-approach').textContent=approachCount;
   document.getElementById('si-active').textContent=_positions.filter(function(p){return !p.is_adopted;}).length;
   document.getElementById('si-shortlist').textContent=coins.length;
+  // Rejim tespiti — ADX bloğu varsa YATAY göster
+  var anyYatay=coins.some(function(s){var r=(_signals[s]&&_signals[s].long)?(_signals[s].long.reason||''):'';return r.indexOf('YATAY')>-1||r.indexOf('ADX')>-1;});
+  var regEl=document.getElementById('si-regime');
+  if(anyYatay){regEl.textContent='YATAY';regEl.style.color='var(--dim)';}
+  else if(readyCount>0){regEl.textContent='TREND';regEl.style.color='var(--accent)';}
+  else{regEl.textContent='IZLE';regEl.style.color='var(--gold)';}
   var openPnl=_positions.reduce(function(a,p){return a+(+(p.pnl||0));},0);
   var pnlEl=document.getElementById('si-pnl');
   pnlEl.textContent=fD(openPnl);pnlEl.className='sig-stat-val '+(openPnl>=0?'g':'r');
@@ -781,6 +794,163 @@ async function fetchLivePrices(){
 }
 fetchLivePrices();setInterval(fetchLivePrices,5000);
 
+// ── Bildirim & Ses Sistemi ─────────────────────────────────────────────────
+var _notifEnabled = localStorage.getItem('notif') !== 'false';
+var _soundEnabled = localStorage.getItem('sound') !== 'false';
+var _prevPositionIds = new Set();
+var _prevTradeCount = 0;
+var _notifPermission = false;
+
+function playSound(type) {
+  if (!_soundEnabled) return;
+  try {
+    var ctx = new (window.AudioContext || window.webkitAudioContext)();
+    var osc = ctx.createOscillator();
+    var gain = ctx.createGain();
+    osc.connect(gain);
+    gain.connect(ctx.destination);
+    if (type === 'open') {
+      // İşlem açıldı — yükselen iki nota
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(660, ctx.currentTime + 0.15);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.4);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.4);
+    } else if (type === 'win') {
+      // Kâr — üç yükselen nota
+      osc.frequency.setValueAtTime(523, ctx.currentTime);
+      osc.frequency.setValueAtTime(659, ctx.currentTime + 0.12);
+      osc.frequency.setValueAtTime(784, ctx.currentTime + 0.24);
+      gain.gain.setValueAtTime(0.3, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
+    } else if (type === 'loss') {
+      // Zarar — alçalan nota
+      osc.frequency.setValueAtTime(440, ctx.currentTime);
+      osc.frequency.setValueAtTime(330, ctx.currentTime + 0.2);
+      gain.gain.setValueAtTime(0.25, ctx.currentTime);
+      gain.gain.exponentialRampToValueAtTime(0.001, ctx.currentTime + 0.5);
+      osc.start(ctx.currentTime);
+      osc.stop(ctx.currentTime + 0.5);
+    }
+  } catch(e) {}
+}
+
+function sendNotif(title, body, type) {
+  // Tarayıcı bildirimi
+  if (_notifEnabled && _notifPermission && document.hidden) {
+    try {
+      var n = new Notification(title, {
+        body: body,
+        icon: 'data:image/svg+xml,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32"><circle cx="16" cy="16" r="16" fill="%2300e5a0"/><text x="16" y="21" text-anchor="middle" font-size="16" fill="black">₿</text></svg>',
+        tag: type,
+        requireInteraction: false
+      });
+      setTimeout(function(){n.close();}, 6000);
+    } catch(e) {}
+  }
+  // Toast bildirim (sayfa açıkken)
+  showToast(title, body, type);
+}
+
+function showToast(title, body, type) {
+  var colors = {open:'#3d8eff', win:'#00e5a0', loss:'#ff2d55'};
+  var toast = document.createElement('div');
+  toast.style.cssText = 'position:fixed;bottom:20px;right:20px;background:#0d1020;border:1px solid '+(colors[type]||'#1e2d4a')+';border-left:3px solid '+(colors[type]||'#3d8eff')+';border-radius:10px;padding:12px 16px;min-width:240px;max-width:320px;z-index:9999;font-family:IBM Plex Mono,monospace;transition:all .3s;box-shadow:0 4px 20px rgba(0,0,0,.5)';
+  toast.innerHTML = '<div style="font-size:11px;font-weight:700;color:'+(colors[type]||'#3d8eff')+';margin-bottom:4px">'+title+'</div><div style="font-size:11px;color:#8899aa;line-height:1.4">'+body+'</div>';
+  document.body.appendChild(toast);
+  setTimeout(function(){toast.style.opacity='0';setTimeout(function(){toast.remove();},300);}, 5000);
+}
+
+function requestNotifPermission() {
+  if ('Notification' in window) {
+    Notification.requestPermission().then(function(p) {
+      _notifPermission = p === 'granted';
+      if (_notifPermission) showToast('Bildirimler aktif', 'Islem bildirimleri acik', 'open');
+    });
+  }
+}
+
+function toggleSound() {
+  _soundEnabled = !_soundEnabled;
+  localStorage.setItem('sound', _soundEnabled);
+  var btn = document.getElementById('sound-btn');
+  btn.textContent = _soundEnabled ? '\uD83D\uDD14 Ses' : '\uD83D\uDD15 Ses Kapali';
+  btn.style.borderColor = _soundEnabled ? '#f5a62330' : 'var(--border)';
+  btn.style.color = _soundEnabled ? 'var(--gold)' : 'var(--dim)';
+  if (_soundEnabled) playSound('open');
+}
+
+function toggleNotif() {
+  if (!_notifPermission) {
+    requestNotifPermission();
+    _notifEnabled = true;
+  } else {
+    _notifEnabled = !_notifEnabled;
+  }
+  localStorage.setItem('notif', _notifEnabled);
+  var btn = document.getElementById('notif-btn');
+  btn.textContent = _notifEnabled ? '\uD83D\uDCF3 Bildirim' : '\uD83D\uDCF5 Bildirim Kapali';
+  btn.style.color = _notifEnabled ? 'var(--accent2)' : 'var(--dim)';
+}
+
+function checkPositionChanges(newPositions) {
+  if (tick < 2) { // İlk 2 döngüde baseline kur, bildirim gönderme
+    newPositions.forEach(function(p){ _prevPositionIds.add(p.symbol+p.side); });
+    return;
+  }
+  var newIds = new Set(newPositions.map(function(p){return p.symbol+p.side;}));
+  // Yeni açılan pozisyonlar
+  newIds.forEach(function(id) {
+    if (!_prevPositionIds.has(id)) {
+      var p = newPositions.find(function(x){return (x.symbol+x.side)===id;});
+      if (p) {
+        var sym = (p.symbol||'').replace('USDT','');
+        playSound('open');
+        sendNotif(
+          '\uD83D\uDFE2 ' + sym + ' ' + (p.side||'').toUpperCase() + ' Açıldı',
+          'Giriş: $' + (+(p.entry_price||0)).toLocaleString() + ' | ' + (p.notional||0) + ' USDT',
+          'open'
+        );
+      }
+    }
+  });
+  // Kapanan pozisyonlar
+  _prevPositionIds.forEach(function(id) {
+    if (!newIds.has(id)) {
+      playSound('win'); // Kapanışta varsayılan win sesi — PnL bilgisi yoksa
+      sendNotif('\uD83D\uDFE1 Pozisyon Kapandı', id.replace('long','LONG').replace('short','SHORT'), 'win');
+    }
+  });
+  _prevPositionIds = newIds;
+}
+
+function checkNewTrades(trades) {
+  if (!trades || !trades.length || tick < 3) {
+    _prevTradeCount = (trades||[]).length;
+    return;
+  }
+  var closed = trades.filter(function(t){return t.status==='closed';});
+  if (closed.length > _prevTradeCount && _prevTradeCount > 0) {
+    var newest = closed[0];
+    var win = (+(newest.pnl||0)) >= 0;
+    var sym = (newest.symbol||'').replace('USDT','');
+    var pnl = (+(newest.pnl||0)).toFixed(2);
+    playSound(win?'win':'loss');
+    sendNotif(
+      (win ? '\uD83C\uDFAF KAR: ' : '\u274C ZARAR: ') + sym,
+      (win?'+$':'-$') + Math.abs(pnl) + ' | ' + (newest.strategy||'OKX'),
+      win?'win':'loss'
+    );
+  }
+  _prevTradeCount = closed.length;
+}
+
+// Bildirim izni iste (sayfa açılınca)
+setTimeout(requestNotifPermission, 2000);
+
 function connect(){
   if(es){es.close();es=null;}
   es=new EventSource(API+'/api/stream');
@@ -788,7 +958,6 @@ function connect(){
     try{
       var d=JSON.parse(e.data);
       if(d.stats) renderStats(d.stats,d.botStatus,d.tradeStats);
-      // Sinyalleri güncelle — hem top-level hem botStatus'tan al
       if(d.signals && Object.keys(d.signals).length>0) _signals=d.signals;
       else if(d.botStatus && d.botStatus.signals && Object.keys(d.botStatus.signals).length>0) _signals=d.botStatus.signals;
       var positions=(d.positions||[]).map(function(p){
@@ -802,6 +971,9 @@ function connect(){
         }
         return p;
       });
+      // Pozisyon değişikliklerini kontrol et → bildirim gönder
+      checkPositionChanges(positions);
+      if(d.recentTrades&&d.recentTrades.length) checkNewTrades(d.recentTrades);
       renderPositions(positions,'pos-grid','pos-cnt');
       renderPositions(positions,'pos-grid2','pos-cnt2');
       if(d.recentTrades&&d.recentTrades.length){
