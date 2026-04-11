@@ -11,6 +11,19 @@ from datetime import datetime, timezone
 from typing import Dict, Optional
 import pandas as pd
 
+# ── Yeni modüller: Rejim + Coin Seçimi + Risk Yönetimi ───────────────────────
+try:
+    from regime_engine import (
+        detect_regime, get_btc_regime, coin_regime_modifier,
+        regime_summary, RegimeResult
+    )
+    from coin_selector import score_coins, format_selection_log, TIER_1
+    from risk_manager import get_risk_manager
+    _ADVANCED_MODULES = True
+except ImportError as _ie:
+    _ADVANCED_MODULES = False
+    logging.getLogger("bot_engine").warning(f"Gelişmiş modüller yüklenemedi: {_ie}")
+
 log = logging.getLogger("bot_engine")
 
 # ── Config ────────────────────────────────────────────────────────────────────
@@ -40,6 +53,9 @@ engine_state: Dict = {
     "grid":               {},
     "balance_floor_hit":  False,
     "balance_floor_at":   None,
+    "regime":             {},        # Market regime engine sonucu
+    "risk_state":         {},        # Risk manager durumu
+    "daily_pnl":          0.0,
 }
 _lock = threading.Lock()
 
@@ -1074,11 +1090,58 @@ def bot_loop():
             # 2. Açık pozisyonları al
             positions = get_open_positions()
 
-            # 2b. Bakiye koruma kontrolü — $1000 altında tüm pozisyonları kapat ve dur
+            # 2b. Bakiye koruma kontrolü
             if _check_balance_floor(balance, positions):
                 _log(f"⏸ Döngü #{loop_num} atlandı — bakiye koruma aktif (${balance:.2f})")
                 time.sleep(LOOP_SECONDS)
                 continue
+
+            # ── YENİ: Rejim Tespiti ────────────────────────────────────────────
+            current_regime     = "RANGE"   # Varsayılan
+            current_regime_obj = None
+            regime_mult        = 1.0
+
+            if _ADVANCED_MODULES:
+                try:
+                    # BTC 1H ve 4H verisi çek
+                    df_btc_1h = fetch_ohlcv("BTC-USDT-SWAP", bar="1H", limit=80)
+                    df_btc_4h = fetch_ohlcv("BTC-USDT-SWAP", bar="4H", limit=60)
+                    btc_funding = get_funding_rate("BTC-USDT-SWAP")
+
+                    if df_btc_1h is not None and len(df_btc_1h) >= 30:
+                        btc_regime = get_btc_regime(df_btc_1h, df_btc_4h, btc_funding)
+                        current_regime     = btc_regime.regime
+                        current_regime_obj = btc_regime
+                        regime_mult        = btc_regime.position_size_mult
+                        _log(f"📊 Rejim: {regime_summary(btc_regime)}")
+
+                        with _lock:
+                            engine_state["regime"] = {
+                                "name":        btc_regime.regime,
+                                "confidence":  btc_regime.confidence,
+                                "adx_1h":      btc_regime.adx_1h,
+                                "adx_4h":      btc_regime.adx_4h,
+                                "allow_long":  btc_regime.allow_long,
+                                "allow_short": btc_regime.allow_short,
+                                "pos_mult":    btc_regime.position_size_mult,
+                                "reason":      btc_regime.reason,
+                            }
+                except Exception as _re:
+                    _log(f"[REGIME] Hata: {_re}", "warning")
+
+            # ── YENİ: Risk Manager Güncelle ───────────────────────────────────
+            if _ADVANCED_MODULES:
+                try:
+                    rm = get_risk_manager()
+                    daily_pnl = engine_state.get("daily_pnl", 0.0)
+                    rm.update_state(positions, balance, daily_pnl)
+                    risk_state = rm.get_state_summary()
+                    if risk_state["is_paused"]:
+                        _log(f"⏸ Risk Manager: {risk_state['pause_reason']}")
+                    with _lock:
+                        engine_state["risk_state"] = risk_state
+                except Exception as _rme:
+                    _log(f"[RISK] Güncelleme hatası: {_rme}", "warning")
 
             # 3. SL/TP kontrol
             signals_snap = engine_state.get("signals", {})
@@ -1150,18 +1213,45 @@ def bot_loop():
                 # ── LONG sinyali ──────────────────────────────────────────────
                 if (sig["long"]["enter"] and sig["long"]["entry"]
                         and sig["long"]["score"] >= LONG_MIN_SCORE
-                        and inst_id not in open_longs   # Aynı coin'de long yok
-                        and inst_id not in open_shorts  # Aynı coin'de short da yok (çakışma engeli)
-                        and long_count < long_limit):   # Long slot dolmadı
+                        and inst_id not in open_longs
+                        and inst_id not in open_shorts
+                        and long_count < long_limit):
+
+                    # Rejim long'a izin veriyor mu?
+                    if current_regime_obj and not current_regime_obj.allow_long:
+                        _log(f"⛔ {sym} LONG — rejim izin vermiyor ({current_regime})")
+                        continue
 
                     price = sig["long"]["entry"]
                     sl    = sig["long"]["sl"] or price * (1 - 0.012)
                     tp    = sig["long"]["tp"] or price * (1 + 0.018)
                     risk  = price - sl
-                    tp1   = price + risk * TP1_R_MULT   # Hızlı kâr (0.5R)
-                    tp2   = price + risk * TP2_R_MULT   # Kalan (1.0R)
-                    _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/11 | Slot:{long_count+1}/{long_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f}(0.5R) TP2:${tp2:.4f}(1R)")
-                    ok = place_order(inst_id, "buy", SLOT_NOTIONAL, price,
+                    tp1   = price + risk * TP1_R_MULT
+                    tp2   = price + risk * TP2_R_MULT
+
+                    # Risk Manager kontrolü
+                    notional_to_use = SLOT_NOTIONAL
+                    if _ADVANCED_MODULES:
+                        try:
+                            rm = get_risk_manager()
+                            rd = rm.check_trade(
+                                inst_id=inst_id, side="long",
+                                notional=SLOT_NOTIONAL,
+                                entry_price=price, stop_price=sl,
+                                regime=current_regime, regime_mult=regime_mult,
+                            )
+                            if not rd.approved:
+                                _log(f"⛔ {sym} LONG risk reddi: {rd.reason}")
+                                continue
+                            if rd.warnings:
+                                for w in rd.warnings:
+                                    _log(f"⚠ {sym} LONG: {w}")
+                            notional_to_use = rd.position_size if rd.position_size > 0 else SLOT_NOTIONAL
+                        except Exception as _rme:
+                            _log(f"[RISK] Kontrol hatası: {_rme}", "warning")
+
+                    _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/11 | Rejim:{current_regime} | Slot:{long_count+1}/{long_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f}(0.5R) TP2:${tp2:.4f}(1R)")
+                    ok = place_order(inst_id, "buy", notional_to_use, price,
                                      sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
                         with _lock:
@@ -1186,18 +1276,45 @@ def bot_loop():
                 elif (PULLBACK_SHORT_ACTIVE
                         and sig["short"]["enter"] and sig["short"]["entry"]
                         and sig["short"]["score"] >= LONG_MIN_SCORE
-                        and inst_id not in open_shorts  # Aynı coin'de short yok
-                        and inst_id not in open_longs   # Aynı coin'de long da yok (çakışma engeli)
-                        and short_count < short_limit): # Short slot dolmadı
+                        and inst_id not in open_shorts
+                        and inst_id not in open_longs
+                        and short_count < short_limit):
+
+                    # Rejim short'a izin veriyor mu?
+                    if current_regime_obj and not current_regime_obj.allow_short:
+                        _log(f"⛔ {sym} SHORT — rejim izin vermiyor ({current_regime})")
+                        continue
 
                     price = sig["short"]["entry"]
                     sl    = sig["short"]["sl"] or price * (1 + 0.012)
                     tp    = sig["short"]["tp"] or price * (1 - 0.018)
                     risk  = sl - price
-                    tp1   = price - risk * TP1_R_MULT   # Hızlı kâr (0.5R)
-                    tp2   = price - risk * TP2_R_MULT   # Kalan (1.0R)
-                    _log(f"🔴 {sym} SHORT | Puan:{sig['short']['score']}/11 | Slot:{short_count+1}/{short_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f}(0.5R) TP2:${tp2:.4f}(1R)")
-                    ok = place_order(inst_id, "sell", SLOT_NOTIONAL, price,
+                    tp1   = price - risk * TP1_R_MULT
+                    tp2   = price - risk * TP2_R_MULT
+
+                    # Risk Manager kontrolü
+                    notional_to_use = SLOT_NOTIONAL
+                    if _ADVANCED_MODULES:
+                        try:
+                            rm = get_risk_manager()
+                            rd = rm.check_trade(
+                                inst_id=inst_id, side="short",
+                                notional=SLOT_NOTIONAL,
+                                entry_price=price, stop_price=sl,
+                                regime=current_regime, regime_mult=regime_mult,
+                            )
+                            if not rd.approved:
+                                _log(f"⛔ {sym} SHORT risk reddi: {rd.reason}")
+                                continue
+                            if rd.warnings:
+                                for w in rd.warnings:
+                                    _log(f"⚠ {sym} SHORT: {w}")
+                            notional_to_use = rd.position_size if rd.position_size > 0 else SLOT_NOTIONAL
+                        except Exception as _rme:
+                            _log(f"[RISK] Kontrol hatası: {_rme}", "warning")
+
+                    _log(f"🔴 {sym} SHORT | Puan:{sig['short']['score']}/11 | Rejim:{current_regime} | Slot:{short_count+1}/{short_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f}(0.5R) TP2:${tp2:.4f}(1R)")
+                    ok = place_order(inst_id, "sell", notional_to_use, price,
                                      sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
                         with _lock:
