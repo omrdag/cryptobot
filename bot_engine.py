@@ -241,7 +241,6 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
         "instId":  inst_id,
         "tdMode":  "cross",
         "side":    side,
-        "posSide": pos_side,
         "ordType": "market",
         "sz":      str(int(qty_contract)),
     }
@@ -249,24 +248,35 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
     result = _okx_post("/api/v5/trade/order", body)
     ok = result.get("code") == "0"
     if not ok:
-        _log(f"❌ Emir reddedildi: {inst_id} → {result.get('msg','?')}", "error")
-        return False
+        # One-way mod başarısız olursa hedge mod dene
+        body_hedge = {
+            "instId":  inst_id,
+            "tdMode":  "cross",
+            "side":    side,
+            "posSide": pos_side,
+            "ordType": "market",
+            "sz":      str(int(qty_contract)),
+        }
+        result = _okx_post("/api/v5/trade/order", body_hedge)
+        ok = result.get("code") == "0"
+        if not ok:
+            _log(f"❌ Emir reddedildi: {inst_id} → {result.get('msg','?')}", "error")
+            return False
 
     order_id = result.get("data", [{}])[0].get("ordId", "")
     _log(f"✅ {side.upper()} {inst_id} {int(qty_contract)} kontrat | ordId={order_id}")
 
     # ── 2. SL algo emri (tüm pozisyon) ───────────────────────────────────────
     if sl_price > 0:
-        sl_side  = "sell" if pos_side == "long" else "buy"
-        sl_body  = {
-            "instId":     inst_id,
-            "tdMode":     "cross",
-            "side":       sl_side,
-            "posSide":    pos_side,
-            "ordType":    "conditional",
-            "sz":         str(int(qty_contract)),
-            "slTriggerPx": round_price(sl_price, tick_sz),
-            "slOrdPx":     "-1",   # market fiyatı
+        sl_side = "sell" if pos_side == "long" else "buy"
+        sl_body = {
+            "instId":          inst_id,
+            "tdMode":          "cross",
+            "side":            sl_side,
+            "ordType":         "conditional",
+            "sz":              str(int(qty_contract)),
+            "slTriggerPx":     round_price(sl_price, tick_sz),
+            "slOrdPx":         "-1",
             "slTriggerPxType": "mark",
         }
         sl_result = _okx_post("/api/v5/trade/order-algo", sl_body)
@@ -275,45 +285,34 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
         else:
             _log(f"⚠️ SL ayarlanamadı: {sl_result.get('msg','?')}", "warning")
 
-    # ── 3. Trailing Stop — fiyat peşinden giden SL ────────────────────────────
-    # TP sabit hedef yerine trailing stop kullan:
-    # - callbackRatio: fiyat zirveye göre bu kadar geri çekilince kapat
-    # - activePx: bu fiyata ulaşınca trailing stop aktif olur
-    # Örnek: Giriş $2179, active=$2191 (+%0.55), callback=%0.4
-    # → Fiyat $2191'e gelir, trailing başlar, $2182'ye düşünce satar
-    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.003"))  # %0.3 aktivasyon
-    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.002"))  # %0.2 geri çekilme
+    # ── 3. Trailing Stop ──────────────────────────────────────────────────────
+    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.003"))
+    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.002"))
 
-    if pos_side == "long":
-        trail_active_px = price * (1 + TRAIL_ACTIVATION_PCT)
-        trail_side      = "sell"
-    else:
-        trail_active_px = price * (1 - TRAIL_ACTIVATION_PCT)
-        trail_side      = "buy"
+    trail_active_px = price * (1 + TRAIL_ACTIVATION_PCT) if pos_side == "long" else price * (1 - TRAIL_ACTIVATION_PCT)
+    trail_side      = "sell" if pos_side == "long" else "buy"
 
     trail_body = {
         "instId":        inst_id,
         "tdMode":        "cross",
         "side":          trail_side,
-        "posSide":       pos_side,
-        "ordType":       "move_order_stop",   # OKX trailing stop emir tipi
+        "ordType":       "move_order_stop",
         "sz":            str(int(qty_contract)),
         "activePx":      round_price(trail_active_px, tick_sz),
         "callbackRatio": str(TRAIL_CALLBACK_PCT),
     }
     trail_result = _okx_post("/api/v5/trade/order-algo", trail_body)
     if trail_result.get("code") == "0":
-        _log(f"🎯 Trailing Stop ayarlandı: aktif=${trail_active_px:.4f} (+%{TRAIL_ACTIVATION_PCT*100:.1f}) | geri çekilme=%{TRAIL_CALLBACK_PCT*100:.1f}")
+        _log(f"🎯 Trailing Stop: aktif=${trail_active_px:.4f} | geri=%{TRAIL_CALLBACK_PCT*100:.1f}")
     else:
-        _log(f"⚠️ Trailing Stop ayarlanamadı: {trail_result.get('msg','?')} — TP1/TP2 ile devam", "warning")
+        _log(f"⚠️ Trailing Stop ayarlanamadı: {trail_result.get('msg','?')}", "warning")
         # Trailing başarısız olursa TP1/TP2 algo emirlerine düş
         if tp1_price > 0:
             tp1_qty  = max(1, int(qty_contract * 0.50))
             tp1_side = "sell" if pos_side == "long" else "buy"
             tp1_body = {
                 "instId": inst_id, "tdMode": "cross", "side": tp1_side,
-                "posSide": pos_side, "ordType": "conditional",
-                "sz": str(tp1_qty),
+                "ordType": "conditional", "sz": str(tp1_qty),
                 "tpTriggerPx": round_price(tp1_price, tick_sz),
                 "tpOrdPx": "-1", "tpTriggerPxType": "mark",
             }
@@ -324,8 +323,7 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
                 tp2_side = "sell" if pos_side == "long" else "buy"
                 tp2_body = {
                     "instId": inst_id, "tdMode": "cross", "side": tp2_side,
-                    "posSide": pos_side, "ordType": "conditional",
-                    "sz": str(tp2_qty),
+                    "ordType": "conditional", "sz": str(tp2_qty),
                     "tpTriggerPx": round_price(tp2_price, tick_sz),
                     "tpOrdPx": "-1", "tpTriggerPxType": "mark",
                 }
@@ -335,7 +333,7 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
 
 
 def close_position(inst_id: str, side: str, qty: float):
-    """Pozisyonu kapat."""
+    """Pozisyonu kapat — one-way mode."""
     if PAPER_TRADING:
         _log(f"[PAPER] KAPAT {inst_id} {side} qty={qty:.4f}")
         return True
@@ -343,7 +341,6 @@ def close_position(inst_id: str, side: str, qty: float):
         return False
 
     close_side = "sell" if side == "long" else "buy"
-    pos_side   = side  # "long" veya "short"
 
     info_data = _okx_get(f"/api/v5/public/instruments?instType=SWAP&instId={inst_id}")
     try:
@@ -351,7 +348,6 @@ def close_position(inst_id: str, side: str, qty: float):
     except:
         ct_val = 0.01
 
-    # OKX'teki gerçek kontrat sayısını al
     pos_data = _okx_get(f"/api/v5/account/positions?instId={inst_id}")
     try:
         sz = pos_data["data"][0]["pos"]
@@ -362,7 +358,6 @@ def close_position(inst_id: str, side: str, qty: float):
         "instId":  inst_id,
         "tdMode":  "cross",
         "side":    close_side,
-        "posSide": pos_side,
         "ordType": "market",
         "sz":      str(abs(int(float(sz)))),
     }
@@ -843,7 +838,7 @@ def _calc_atr_14(inst_id: str, bar: str = "1H") -> float:
 
 def _place_grid_limit_order(inst_id: str, side: str, price: float,
                              sz: int, pos_side: str) -> Optional[str]:
-    """Grid için limit emir gönder. Başarıda orderId döndür."""
+    """Grid için limit emir gönder — One-way mode (posSide yok)."""
     if PAPER_TRADING:
         fake_id = f"PAPER-{inst_id}-{side}-{int(price)}"
         _log(f"[PAPER GRID] {side.upper()} {inst_id} {sz}k @ ${price:.4f}")
@@ -851,15 +846,14 @@ def _place_grid_limit_order(inst_id: str, side: str, price: float,
     if not OKX_KEY:
         return None
     try:
-        info     = get_contract_info(inst_id)
-        tick_sz  = info["tick_sz"]
+        info    = get_contract_info(inst_id)
+        tick_sz = info["tick_sz"]
 
-        # Önce hedge mode (posSide ile) dene, başarısız olursa net mode dene
+        # One-way mode — posSide parametresi yok
         body = {
             "instId":  inst_id,
             "tdMode":  "cross",
             "side":    side,
-            "posSide": pos_side,
             "ordType": "limit",
             "px":      round_price(price, tick_sz),
             "sz":      str(sz),
@@ -867,24 +861,11 @@ def _place_grid_limit_order(inst_id: str, side: str, price: float,
         result = _okx_post("/api/v5/trade/order", body)
         if result.get("code") == "0":
             oid = result["data"][0]["ordId"]
+            _log(f"[GRID] ✓ {side.upper()} {inst_id} @ ${price:.2f} — emir kabul edildi ({oid[:8]})")
             return oid
 
-        # Hedge mode başarısız → net mode dene (posSide olmadan)
-        body_net = {
-            "instId":  inst_id,
-            "tdMode":  "cross",
-            "side":    side,
-            "ordType": "limit",
-            "px":      round_price(price, tick_sz),
-            "sz":      str(sz),
-        }
-        result2 = _okx_post("/api/v5/trade/order", body_net)
-        if result2.get("code") == "0":
-            oid = result2["data"][0]["ordId"]
-            _log(f"[GRID] Net mode ile emir kabul edildi: {oid}")
-            return oid
-
-        _log(f"[GRID] Limit emir hatası (hedge+net): {result2.get('msg','?')}", "warning")
+        err_msg = result.get("msg") or result.get("data", [{}])[0].get("sMsg", "?")
+        _log(f"[GRID] Emir hatası: {err_msg}", "warning")
         return None
     except Exception as e:
         _log(f"[GRID] Emir gönderme hatası: {e}", "warning")
