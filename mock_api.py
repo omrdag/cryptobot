@@ -253,6 +253,9 @@ def build_payload():
             "recentTrades": list(_recent_trades[:50]),
             "tradeStats":   dict(ts),
             "signals":      eng.get("signals", {}),
+            "regime":       eng.get("regime", {}),
+            "riskState":    eng.get("risk_state", {}),
+            "gridState":    eng.get("grid", {}),
             "stats": {
                 **dict(_stats),
                 "winRate":       ts.get("winRate",       _stats.get("winRate", 0)),
@@ -268,14 +271,16 @@ def build_payload():
                 "mode":              "paper" if PAPER_TRADING else "live",
                 "exchange":          "okx",
                 "authenticated":     bool(OKX_KEY),
-                "strategy":          "Pullback Long v3",
+                "strategy":          "Hibrit v2 (Regime+Grid+Funding)",
                 "last_scan":         eng.get("last_scan"),
                 "loop_count":        eng.get("loop_count", 0),
                 "signals":           eng.get("signals", {}),
                 "logs":              eng.get("logs", [])[-10:],
                 "balance_floor_hit": eng.get("balance_floor_hit", False),
                 "balance_floor_at":  eng.get("balance_floor_at"),
-                "balance_floor":     float(os.getenv("BALANCE_FLOOR", "1000")),
+                "balance_floor":     float(os.getenv("BALANCE_FLOOR", "0")),
+                "regime":            eng.get("regime", {}),
+                "risk_state":        eng.get("risk_state", {}),
             },
             "timestamp": datetime.now().isoformat()
         }
