@@ -17,6 +17,7 @@ RR:      ~1.6× (SL = 2.5×ATR altı, TP = 1.6× risk üstü)
 Türü:    Sadece LONG — kısa vadeli swing içinde trend takibi
 """
 
+import os
 import time
 import pandas as pd
 import numpy as np
