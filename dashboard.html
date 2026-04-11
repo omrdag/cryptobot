@@ -569,12 +569,12 @@ function buildPosCard(p){
     var slC=il?'#ff3d6a':'#00f0a0',tpC=il?'#00f0a0':'#ff3d6a';
     barH='<div class="bar-wrap">'
       +'<div class="bar-labels">'
-        +'<div><div style="font-size:10px;font-weight:600;color:'+slC+';font-family:JetBrains Mono,monospace">'+slL+'</div><div style="font-size:9px;color:'+slC+'99">-'+slD+'%</div></div>'
+        +'<div><div style="font-size:11px;font-weight:700;color:'+slC+';font-family:JetBrains Mono,monospace">'+slL+'</div><div style="font-size:9px;color:'+slC+'99">-'+slD+'%</div></div>'
         +'<div style="font-size:9px;color:var(--dim);align-self:flex-end">pozisyon</div>'
-        +'<div style="text-align:right"><div style="font-size:10px;font-weight:600;color:'+tpC+';font-family:JetBrains Mono,monospace">'+tpL+'</div><div style="font-size:9px;color:'+tpC+'99">+'+tpD+'%</div></div>'
+        +'<div style="text-align:right"><div style="font-size:11px;font-weight:700;color:'+tpC+';font-family:JetBrains Mono,monospace">'+tpL+'</div><div style="font-size:9px;color:'+tpC+'99">+'+tpD+'%</div></div>'
       +'</div>'
       +'<div class="bar-track"><div class="bar-bg"></div><div class="bar-fill" style="width:'+pct.toFixed(1)+'%;background:'+bC+'"></div><div class="bar-cur" style="left:calc('+pct.toFixed(1)+'% - 1.5px)"></div></div>'
-      +'<div class="bar-note" style="color:'+bC+'">%'+pct.toFixed(0)+' · TP\'ye '+tpD+'% kaldı</div>'
+      +'<div class="bar-note" style="color:'+bC+'">%'+pct.toFixed(0)+' · TP\'ye '+tpD+'% · $'+(Math.abs(tp-cur)).toFixed(tp>100?1:2)+' kaldı</div>'
     +'</div>';
   }
   return '<div class="pos-card" style="border-top-color:'+sideC+'">'
@@ -587,7 +587,9 @@ function buildPosCard(p){
     +barH
     +'<div class="pos-grid">'
       +'<div class="pos-cell"><div class="pc-lbl">Giriş</div><div class="pc-val">$'+entry.toLocaleString(undefined,{maximumFractionDigits:entry>100?1:4})+'</div></div>'
-      +'<div class="pos-cell"><div class="pc-lbl">Güncel</div><div class="pc-val" style="color:'+(il?'var(--accent)':'var(--danger)')+'">$'+cur.toLocaleString(undefined,{maximumFractionDigits:cur>100?1:4})+'</div></div>'
+      +'<div class="pos-cell"><div class="pc-lbl">Güncel</div><div class="pc-val" style="color:'+(il?'var(--accent)':'var(--danger)')+'"">$'+cur.toLocaleString(undefined,{maximumFractionDigits:cur>100?1:4})+'</div></div>'
+      +'<div class="pos-cell"><div class="pc-lbl">🎯 Satış Hedefi (TP)</div><div class="pc-val" style="color:var(--accent)">'+(tp>0?'$'+tp.toLocaleString(undefined,{maximumFractionDigits:tp>100?1:4}):'--')+'</div></div>'
+      +'<div class="pos-cell"><div class="pc-lbl">🛑 Stop Loss (SL)</div><div class="pc-val" style="color:var(--danger)">'+(sl>0?'$'+sl.toLocaleString(undefined,{maximumFractionDigits:sl>100?1:4}):'--')+'</div></div>'
       +'<div class="pos-cell"><div class="pc-lbl">Marjin</div><div class="pc-val" style="color:var(--gold)">$'+margin+'</div></div>'
       +'<div class="pos-cell"><div class="pc-lbl">Notional</div><div class="pc-val">$'+notional.toLocaleString(undefined,{maximumFractionDigits:0})+'</div></div>'
     +'</div>'
