@@ -441,47 +441,142 @@ def run_signals(positions: list) -> dict:
 
 
 def check_exits(positions: list, signals: dict):
-    """SL/TP kontrolü — basit fiyat bazlı çıkış."""
+    """
+    SL/TP + Trailing Stop kontrolü.
+
+    Her döngüde:
+    1. Mevcut fiyatı çek
+    2. Trailing stop aktive koşulu: fiyat giriş + %TRAIL_ACTIVATION_PCT üzerine çıktı mı?
+    3. Aktifse: en yüksek gördüğü fiyata göre SL güncelle (OKX amend-algos)
+    4. SL veya TP tetiklendiyse kapat
+    """
+    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.003"))  # %0.3
+    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.002"))  # %0.2
+
     for pos in positions:
         inst_id = pos["instId"]
         sym     = COIN_MAP.get(inst_id, inst_id)
-        sig     = signals.get(sym, {})
-        if not sig:
-            continue
 
-        current_price_data = _okx_get(f"/api/v5/market/ticker?instId={inst_id}")
+        # Anlık fiyat
         try:
-            price = float(current_price_data["data"][0]["last"])
+            price_data = _okx_get(f"/api/v5/market/ticker?instId={inst_id}")
+            price = float(price_data["data"][0]["last"])
         except:
             continue
 
-        entry  = pos["entry"]
-        side   = pos["side"]
+        entry = float(pos.get("avgPx", 0) or pos.get("entry", 0))
+        side  = pos.get("side", "long")
+        qty   = float(pos.get("pos", 0) or pos.get("qty", 0))
 
-        # SL/TP değerlerini engine_state'den al (açılışta kaydedildi)
-        pos_detail = engine_state["open_positions"].get(sym, {})
-        sl = pos_detail.get("stop_loss", 0)
-        tp = pos_detail.get("take_profit", 0)
-
-        if sl <= 0 or tp <= 0:
+        if entry <= 0 or qty <= 0:
             continue
 
+        # engine_state'den detayları al
+        pos_detail = engine_state["open_positions"].get(sym, {})
+        sl = float(pos_detail.get("stop_loss", 0))
+        tp = float(pos_detail.get("take_profit", 0))
+
+        if sl <= 0:
+            continue
+
+        # ── Trailing Stop Mantığı ─────────────────────────────────────────────
+        if side == "long":
+            activation_price = entry * (1 + TRAIL_ACTIVATION_PCT)
+            in_profit = price >= activation_price
+
+            if in_profit:
+                # En yüksek gördüğü fiyatı takip et
+                prev_high = float(pos_detail.get("trail_high", 0))
+                new_high  = max(prev_high, price)
+
+                # Trailing SL = en yüksek fiyat × (1 - callback)
+                trail_sl = new_high * (1 - TRAIL_CALLBACK_PCT)
+
+                # Mevcut SL'den yukarıdaysa güncelle
+                if trail_sl > sl:
+                    _log(f"🔒 {sym} Trailing SL güncellendi: ${sl:.4f} → ${trail_sl:.4f} (zirve:${new_high:.4f})")
+                    with _lock:
+                        if sym in engine_state["open_positions"]:
+                            engine_state["open_positions"][sym]["stop_loss"] = trail_sl
+                            engine_state["open_positions"][sym]["trail_high"] = new_high
+                    sl = trail_sl  # Güncel SL ile devam et
+
+                    # OKX'te SL algo emrini güncelle (paper modda sadece log)
+                    if not PAPER_TRADING and OKX_KEY:
+                        try:
+                            info    = get_contract_info(inst_id)
+                            tick_sz = info["tick_sz"]
+                            # Tüm algo emirleri iptal et ve yeni SL koy
+                            _okx_post("/api/v5/trade/cancel-algos", [{"instId": inst_id, "algoId": ""}])
+                            sl_body = {
+                                "instId":        inst_id,
+                                "tdMode":        "cross",
+                                "side":          "sell",
+                                "posSide":       "long",
+                                "ordType":       "conditional",
+                                "sz":            str(int(qty)),
+                                "slTriggerPx":   round_price(trail_sl, tick_sz),
+                                "slOrdPx":       "-1",
+                                "slTriggerPxType": "mark",
+                            }
+                            _okx_post("/api/v5/trade/order-algo", sl_body)
+                        except Exception as e:
+                            _log(f"[TRAIL] OKX SL güncelleme hatası: {e}", "warning")
+                else:
+                    with _lock:
+                        if sym in engine_state["open_positions"]:
+                            engine_state["open_positions"][sym]["trail_high"] = new_high
+
+        elif side == "short":
+            activation_price = entry * (1 - TRAIL_ACTIVATION_PCT)
+            in_profit = price <= activation_price
+
+            if in_profit:
+                prev_low = float(pos_detail.get("trail_low", float('inf')))
+                new_low  = min(prev_low, price)
+                trail_sl = new_low * (1 + TRAIL_CALLBACK_PCT)
+
+                if trail_sl < sl:
+                    _log(f"🔒 {sym} SHORT Trailing SL güncellendi: ${sl:.4f} → ${trail_sl:.4f} (dip:${new_low:.4f})")
+                    with _lock:
+                        if sym in engine_state["open_positions"]:
+                            engine_state["open_positions"][sym]["stop_loss"] = trail_sl
+                            engine_state["open_positions"][sym]["trail_low"] = new_low
+                    sl = trail_sl
+                else:
+                    with _lock:
+                        if sym in engine_state["open_positions"]:
+                            engine_state["open_positions"][sym]["trail_low"] = new_low
+
+        # ── SL / TP Kontrolü ─────────────────────────────────────────────────
         should_close = False
         reason = ""
+
         if side == "long":
             if price <= sl:
-                should_close, reason = True, f"SL tetiklendi (${price:.4f} <= ${sl:.4f})"
-            elif price >= tp:
-                should_close, reason = True, f"TP tetiklendi (${price:.4f} >= ${tp:.4f})"
+                should_close = True
+                reason = f"SL tetiklendi (${price:.4f} ≤ ${sl:.4f})"
+            elif tp > 0 and price >= tp:
+                should_close = True
+                reason = f"TP tetiklendi (${price:.4f} ≥ ${tp:.4f})"
         elif side == "short":
             if price >= sl:
-                should_close, reason = True, f"SL tetiklendi (${price:.4f} >= ${sl:.4f})"
-            elif price <= tp:
-                should_close, reason = True, f"TP tetiklendi (${price:.4f} <= ${tp:.4f})"
+                should_close = True
+                reason = f"SL tetiklendi (${price:.4f} ≥ ${sl:.4f})"
+            elif tp > 0 and price <= tp:
+                should_close = True
+                reason = f"TP tetiklendi (${price:.4f} ≤ ${tp:.4f})"
 
         if should_close:
             _log(f"🔴 {sym} KAPAT — {reason}")
-            close_position(inst_id, side, pos["qty"])
+            close_position(inst_id, side, qty)
+            # Risk manager'a bildir
+            if _ADVANCED_MODULES:
+                try:
+                    pnl = (price - entry) * qty if side == "long" else (entry - price) * qty
+                    get_risk_manager().record_trade_result(pnl)
+                except:
+                    pass
             with _lock:
                 engine_state["open_positions"].pop(sym, None)
 
