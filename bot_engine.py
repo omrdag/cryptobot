@@ -821,7 +821,7 @@ GRID_ATR_MULT      = float(os.getenv("GRID_ATR_MULT", "3.0"))   # ATR çarpanı 
 GRID_ACTIVE        = os.getenv("GRID_ACTIVE", "true").lower() == "true"
 
 # Grid durumu: {inst_id → {state, levels, orders, last_price, ...}}
-_grid_state: Dict[str, dict] = {}
+_grid_state: Dict[str, dict] = {}  # Her deploy'da sıfırdan başlar
 
 
 def _calc_atr_14(inst_id: str, bar: str = "1H") -> float:
@@ -853,6 +853,8 @@ def _place_grid_limit_order(inst_id: str, side: str, price: float,
     try:
         info     = get_contract_info(inst_id)
         tick_sz  = info["tick_sz"]
+
+        # Önce hedge mode (posSide ile) dene, başarısız olursa net mode dene
         body = {
             "instId":  inst_id,
             "tdMode":  "cross",
@@ -866,9 +868,24 @@ def _place_grid_limit_order(inst_id: str, side: str, price: float,
         if result.get("code") == "0":
             oid = result["data"][0]["ordId"]
             return oid
-        else:
-            _log(f"[GRID] Limit emir hatası: {result.get('msg','?')}", "warning")
-            return None
+
+        # Hedge mode başarısız → net mode dene (posSide olmadan)
+        body_net = {
+            "instId":  inst_id,
+            "tdMode":  "cross",
+            "side":    side,
+            "ordType": "limit",
+            "px":      round_price(price, tick_sz),
+            "sz":      str(sz),
+        }
+        result2 = _okx_post("/api/v5/trade/order", body_net)
+        if result2.get("code") == "0":
+            oid = result2["data"][0]["ordId"]
+            _log(f"[GRID] Net mode ile emir kabul edildi: {oid}")
+            return oid
+
+        _log(f"[GRID] Limit emir hatası (hedge+net): {result2.get('msg','?')}", "warning")
+        return None
     except Exception as e:
         _log(f"[GRID] Emir gönderme hatası: {e}", "warning")
         return None
@@ -1008,7 +1025,7 @@ def run_grid_trading() -> None:
 
         gs = _grid_state.get(inst_id)
 
-        # Grid hiç kurulmamışsa kur
+    # Grid hiç kurulmamışsa kur
         if not gs or not gs.get("active"):
             _log(f"[GRID] {sym} ilk kurulum @ ${current_price:.2f}")
             # Kaldıraç ayarla
