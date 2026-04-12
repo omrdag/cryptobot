@@ -8,19 +8,24 @@ from datetime import datetime, timezone
 
 log = logging.getLogger("db_manager")
 
+_db_error_logged = False
+
 def get_conn():
+    global _db_error_logged
     import psycopg2
     url = os.getenv("DATABASE_URL", "") or os.getenv("DATABASE_PUBLIC_URL", "")
     if not url:
         return None
-    # Railway internal hostname bazen çözülemiyor — public URL'e geç
     if "railway.internal" in url:
         url = os.getenv("DATABASE_PUBLIC_URL", url)
     try:
         conn = psycopg2.connect(url, connect_timeout=5)
+        _db_error_logged = False  # Bağlantı başarılı, sıfırla
         return conn
     except Exception as e:
-        log.error(f"DB bağlantı hatası: {e}")
+        if not _db_error_logged:
+            log.error(f"DB bağlantı hatası: {e}")
+            _db_error_logged = True  # Aynı hatayı tekrar loglama
         return None
 
 def init_db():
