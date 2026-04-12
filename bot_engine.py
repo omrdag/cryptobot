@@ -96,7 +96,7 @@ def _okx_get(path: str) -> dict:
             "https://www.okx.com" + path,
             headers=_sign(ts, "GET", path)
         )
-        with urllib.request.urlopen(req, timeout=8) as r:
+        with urllib.request.urlopen(req, timeout=4) as r:
             return json.loads(r.read())
     except Exception as e:
         _log(f"OKX GET hatası {path}: {e}", "error")
@@ -113,7 +113,7 @@ def _okx_post(path: str, body: dict) -> dict:
             headers = _sign(ts, "POST", path, body_str),
             method  = "POST",
         )
-        with urllib.request.urlopen(req, timeout=8) as r:
+        with urllib.request.urlopen(req, timeout=4) as r:
             return json.loads(r.read())
     except Exception as e:
         _log(f"OKX POST hatası {path}: {e}", "error")
@@ -128,7 +128,7 @@ def fetch_ohlcv(inst_id: str, bar: str = "1m", limit: int = 100) -> Optional[pd.
             "https://www.okx.com" + path,
             headers={"User-Agent": "CryptoBot/3.0"}
         )
-        with urllib.request.urlopen(req, timeout=8) as r:
+        with urllib.request.urlopen(req, timeout=4) as r:
             data = json.loads(r.read())
         candles = data.get("data", [])
         if not candles:
