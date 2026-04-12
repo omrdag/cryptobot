@@ -478,8 +478,28 @@ def check_exits(positions: list, signals: dict):
         sl = float(pos_detail.get("stop_loss", 0))
         tp = float(pos_detail.get("take_profit", 0))
 
-        if sl <= 0:
-            continue
+        # ── Kritik: SL yoksa otomatik hesapla ve kaydet ───────────────────────
+        # Deploy sonrası memory sıfırlandığında eski pozisyonların SL'i kaybolur.
+        # Bu durumda ATR bazlı acil SL hesapla ve engine_state'e kaydet.
+        if sl <= 0 and entry > 0:
+            atr = _calc_atr_14(inst_id, bar="1H")
+            if atr <= 0:
+                atr = entry * 0.015  # ATR alınamazsa %1.5 varsayılan
+            sl_atr_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
+            if side == "long":
+                sl = entry - atr * sl_atr_mult
+                tp = entry + atr * sl_atr_mult * 2 if tp <= 0 else tp
+            else:
+                sl = entry + atr * sl_atr_mult
+                tp = entry - atr * sl_atr_mult * 2 if tp <= 0 else tp
+            _log(f"⚠️ {sym} SL kayıp — ATR bazlı yeniden hesaplandı: SL=${sl:.4f} (giriş=${entry:.4f})")
+            with _lock:
+                if sym not in engine_state["open_positions"]:
+                    engine_state["open_positions"][sym] = {}
+                engine_state["open_positions"][sym]["stop_loss"]   = sl
+                engine_state["open_positions"][sym]["take_profit"] = tp
+                engine_state["open_positions"][sym]["entry_price"] = entry
+                engine_state["open_positions"][sym]["side"]        = side
 
         # ── Anlık Kâr Hesapla (USDT) ─────────────────────────────────────────
         info   = get_contract_info(inst_id)
