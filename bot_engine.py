@@ -19,6 +19,7 @@ try:
     )
     from coin_selector import score_coins, format_selection_log, TIER_1
     from risk_manager import get_risk_manager
+    from entry_recycler import get_recycler
     _ADVANCED_MODULES = True
 except ImportError as _ie:
     _ADVANCED_MODULES = False
@@ -724,6 +725,18 @@ def check_exits(positions: list, signals: dict):
             close_position(inst_id, side, qty)
             if _ADVANCED_MODULES:
                 try: get_risk_manager().record_trade_result(pnl_usdt)
+                except: pass
+                try:
+                    # Entry Recycler'a bildir — cooldown + rescan kuyruğuna al
+                    get_recycler().record_close(
+                        symbol       = sym,
+                        inst_id      = inst_id,
+                        side         = side,
+                        entry_price  = entry,
+                        close_price  = price,
+                        pnl_usdt     = pnl_usdt,
+                        close_reason = reason.split(" ")[0],
+                    )
                 except: pass
             with _lock:
                 engine_state["open_positions"].pop(sym, None)
@@ -1473,9 +1486,33 @@ def bot_loop():
 
                 inst_id = sig["inst_id"]
 
+                # ── Entry Recycler: Cooldown kontrolü ─────────────────────────
+                if _ADVANCED_MODULES:
+                    try:
+                        recycler = get_recycler()
+                        if recycler.is_in_cooldown(sym):
+                            _log(f"⏳ {sym} cooldown'da — giriş bekleniyor")
+                            continue
+                        # Score boost uygula
+                        boost = recycler.get_score_boost(sym)
+                        if boost > 0:
+                            sig["long"]["score"]  = sig["long"]["score"]  + boost
+                            sig["short"]["score"] = sig["short"]["score"] + boost
+                            _log(f"⚡ {sym} re-entry boost: +{boost} puan")
+                    except:
+                        pass
+
+                # ── Dinamik LONG_MIN_SCORE (rejime göre) ─────────────────────
+                effective_min = LONG_MIN_SCORE
+                if current_regime == "TREND_UP":
+                    effective_min = max(6, LONG_MIN_SCORE - 2)
+                elif current_regime == "TREND_DOWN":
+                    effective_min = LONG_MIN_SCORE + 2
+                # RANGE → varsayılan LONG_MIN_SCORE
+
                 # ── LONG sinyali ──────────────────────────────────────────────
                 if (sig["long"]["enter"] and sig["long"]["entry"]
-                        and sig["long"]["score"] >= LONG_MIN_SCORE
+                        and sig["long"]["score"] >= effective_min
                         and inst_id not in open_longs
                         and inst_id not in open_shorts
                         and long_count < long_limit):
@@ -1528,6 +1565,10 @@ def bot_loop():
                         open_count  += 1
                         long_count  += 1
                         open_longs.add(inst_id)
+                        # Recycler'a başarılı giriş bildir — kuyruğu temizle
+                        if _ADVANCED_MODULES:
+                            try: get_recycler().mark_re_entered(sym, success=True)
+                            except: pass
                         if db:
                             tid = db.open_trade(sym, "long", price, sl, tp, SLOT_NOTIONAL,
                                                 sig["long"]["score"], "Pullback Long",
@@ -1538,7 +1579,7 @@ def bot_loop():
                 # ── SHORT sinyali ─────────────────────────────────────────────
                 elif (PULLBACK_SHORT_ACTIVE
                         and sig["short"]["enter"] and sig["short"]["entry"]
-                        and sig["short"]["score"] >= LONG_MIN_SCORE
+                        and sig["short"]["score"] >= effective_min
                         and inst_id not in open_shorts
                         and inst_id not in open_longs
                         and short_count < short_limit):
@@ -1597,6 +1638,34 @@ def bot_loop():
                                                 "paper" if PAPER_TRADING else "live")
                             if tid:
                                 _trade_ids[sym] = tid
+
+            # ── Entry Recycler: Hazır öğeleri rescan et ───────────────────────
+            if _ADVANCED_MODULES:
+                try:
+                    recycler = get_recycler()
+                    ready_items = recycler.get_ready_items()
+                    for item in ready_items:
+                        sym = item.trade.symbol
+                        _log(f"♻️ {sym} rescan — cooldown bitti, skor değerlendiriliyor")
+                        item.mark_attempted()
+                        # Rescan: mevcut sinyali kontrol et
+                        sig = signals.get(sym, {})
+                        long_sig  = sig.get("long", {})
+                        short_sig = sig.get("short", {})
+                        boosted_long  = long_sig.get("score", 0)  + item.score_boost
+                        boosted_short = short_sig.get("score", 0) + item.score_boost
+                        if boosted_long >= effective_min and long_sig.get("enter"):
+                            _log(f"♻️ {sym} re-entry LONG uygun (skor:{boosted_long}) — bir sonraki döngüde açılacak")
+                        elif boosted_short >= effective_min and short_sig.get("enter"):
+                            _log(f"♻️ {sym} re-entry SHORT uygun (skor:{boosted_short}) — bir sonraki döngüde açılacak")
+                        else:
+                            _log(f"♻️ {sym} rescan — skor yetersiz, beklemeye devam")
+                            recycler.mark_re_entered(sym, success=False)
+                    # Recycler durumunu engine_state'e yaz
+                    with _lock:
+                        engine_state["recycle_state"] = recycler.get_status()
+                except Exception as _re:
+                    _log(f"[RECYCLE] Hata: {_re}", "warning")
 
         except Exception as e:
             _log(f"Döngü hatası: {e}", "error")
