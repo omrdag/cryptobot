@@ -166,16 +166,12 @@ def get_open_positions() -> list:
     data = _okx_get("/api/v5/account/positions?instType=SWAP")
     positions = []
     raw_list = data.get("data", [])
-    _log(f"[DEBUG] OKX toplam pozisyon: {len(raw_list)}")
     for p in raw_list:
-        # Hem pos hem longQty/shortQty kontrol et
         pos_val   = p.get("pos", "0")
         long_qty  = p.get("longQty", "0")
         short_qty = p.get("shortQty", "0")
-        _log(f"[DEBUG] {p.get('instId')} | pos={pos_val} | longQty={long_qty} | shortQty={short_qty} | posSide={p.get('posSide')} | avgPx={p.get('avgPx')}")
-        
+
         qty = float(pos_val or 0)
-        # longQty/shortQty dolu ama pos boşsa onları kullan
         if qty == 0 and float(long_qty or 0) > 0:
             qty = float(long_qty)
         elif qty == 0 and float(short_qty or 0) > 0:
@@ -603,7 +599,9 @@ def check_exits(positions: list, signals: dict):
                 close_side = "sell" if side == "long" else "buy"
                 half_body  = {
                     "instId":  inst_id, "tdMode": "cross",
-                    "side":    close_side, "ordType": "market",
+                    "side":    close_side,
+                    "posSide": side,        # Hedge mode zorunlu
+                    "ordType": "market",
                     "sz":      str(half_qty),
                 }
                 result = _okx_post("/api/v5/trade/order", half_body)
