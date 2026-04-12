@@ -370,14 +370,21 @@ def build_long_signal(
             f"Puan yetersiz ({score}/{effective_min}){session_note}: {' | '.join(reasons)}"
         )
 
-    # 6. SL / TP — Range piyasası için optimize edildi
-    # SL: ATR×1.5 (dar, hızlı zarar kes)
-    # TP1: Risk×0.5 (çabuk kâr kilitle)
-    # TP2: Risk×1.0 (kalan pozisyon)
+    # 6. SL / TP — 1H ATR bazlı (anlamlı mesafe için)
+    # 1dk ATR çok dar olduğundan 1H ATR kullanılıyor
     entry_price = d["close"]
-    atr         = d["atr"]
-    sl_mult     = float(os.getenv("SL_ATR_MULT", "1.5"))   # Varsayılan 1.5, ayarlanabilir
-    tp_mult     = float(os.getenv("TP_RR_MULT",  "1.0"))   # Varsayılan 1.0 R/R
+    sl_mult     = float(os.getenv("SL_ATR_MULT", "1.5"))
+    tp_mult     = float(os.getenv("TP_RR_MULT",  "1.0"))
+
+    # 1H ATR hesapla (varsa), yoksa 1dk ATR × 10 kullan
+    atr_1h = 0.0
+    if df_1h is not None and len(df_1h) >= 15:
+        try:
+            atr_1h = float(_atr(df_1h).iloc[-1])
+        except:
+            atr_1h = 0.0
+
+    atr = atr_1h if atr_1h > 0 else d["atr"] * 10
     stop_loss   = entry_price - (atr * sl_mult)
     risk        = entry_price - stop_loss
     take_profit = entry_price + (risk * tp_mult)
