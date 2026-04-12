@@ -753,14 +753,76 @@ function checkNewTrades(trades){
   _prevTradeCount=closed.length;
 }
 
+// ── OKX WebSocket — Gerçek Zamanlı Fiyat ────────────────────────────────────
+var _ws = null;
+var _wsReady = false;
+var SYMBOLS = ['BTC-USDT-SWAP','ETH-USDT-SWAP','SOL-USDT-SWAP','BNB-USDT-SWAP','AVAX-USDT-SWAP'];
+
+function connectWS(){
+  try{
+    _ws = new WebSocket('wss://ws.okx.com:8443/ws/v5/public');
+    _ws.onopen = function(){
+      _wsReady = true;
+      var args = SYMBOLS.map(function(s){return {channel:'tickers',instId:s};});
+      _ws.send(JSON.stringify({op:'subscribe',args:args}));
+    };
+    _ws.onmessage = function(e){
+      try{
+        var d = JSON.parse(e.data);
+        if(d.data && d.data[0] && d.data[0].instId){
+          var sym = d.data[0].instId.replace('-SWAP','').replace('-','');
+          var pr  = parseFloat(d.data[0].last);
+          if(pr > 0){
+            _lp[sym] = pr;
+            // Pozisyonları anlık güncelle
+            updatePositionPnl(sym, pr);
+          }
+        }
+      }catch(err){}
+    };
+    _ws.onerror = function(){ _wsReady = false; };
+    _ws.onclose = function(){ _wsReady = false; setTimeout(connectWS, 3000); };
+  }catch(e){ setTimeout(connectWS, 5000); }
+}
+
+function updatePositionPnl(sym, price){
+  // Açık pozisyon kartlarını anlık güncelle
+  _pos.forEach(function(p){
+    var pSym = (p.symbol||'').replace('USDT','') + 'USDT';
+    if(pSym !== sym) return;
+    var entry  = +(p.entry_price||0);
+    var notional = +(p.notional||0);
+    var lev    = +(p.leverage||10);
+    var margin = notional / lev;
+    if(entry <= 0 || margin <= 0) return;
+    var cq   = notional / entry;
+    var pnl  = p.side === 'long' ? (price - entry) * cq : (entry - price) * cq;
+    var pnlP = (pnl / margin) * 100;
+    p.current_price = price;
+    p.pnl = Math.round(pnl * 100) / 100;
+    p.pnl_percent = Math.round(pnlP * 100) / 100;
+  });
+}
+
+// WebSocket başlat
+connectWS();
+
+// Fallback: WebSocket bağlı değilse REST API ile yedek güncelleme
 async function fetchLivePrices(){
+  if(_wsReady) return; // WS çalışıyorsa REST'e gerek yok
   for(var i=0;i<5;i++){
     var sym=['BTCUSDT','ETHUSDT','SOLUSDT','BNBUSDT','AVAXUSDT'][i];
     var inst=sym.replace('USDT','-USDT');
-    try{var r=await fetch('https://www.okx.com/api/v5/market/ticker?instId='+inst);var d=await r.json();var pr=parseFloat(d&&d.data&&d.data[0]?d.data[0].last:0);if(pr>0)_lp[sym]=pr;}catch(e){}
+    try{
+      var r=await fetch('https://www.okx.com/api/v5/market/ticker?instId='+inst);
+      var d=await r.json();
+      var pr=parseFloat(d&&d.data&&d.data[0]?d.data[0].last:0);
+      if(pr>0){ _lp[sym]=pr; updatePositionPnl(sym,pr); }
+    }catch(e){}
   }
 }
-fetchLivePrices();setInterval(fetchLivePrices,5000);
+fetchLivePrices();
+setInterval(fetchLivePrices, 2000); // WS yoksa 2sn'de bir REST
 
 function connect(){
   if(es){es.close();es=null;}
@@ -773,8 +835,9 @@ function connect(){
       if(d.stats)renderStats(d.stats,d.botStatus,d.tradeStats,d.regime||d.botStatus&&d.botStatus.regime,d.riskState||d.botStatus&&d.botStatus.risk_state,d.gridState);
       var positions=(d.positions||[]).map(function(p){
         var lp=_lp[p.symbol];
-        if(lp&&lp>0&&!p.is_adopted){
-          var cq=(+(p.notional||0))/(+(p.entry_price||1)),mg=(+(p.notional||0))/(+(p.leverage||10));
+        if(lp&&lp>0){
+          var cq=(+(p.notional||0))/(+(p.entry_price||1));
+          var mg=(+(p.notional||0))/(+(p.leverage||10));
           var pnl=p.side==='long'?(lp-(+(p.entry_price||0)))*cq:((+(p.entry_price||0))-lp)*cq;
           return Object.assign({},p,{current_price:lp,pnl:Math.round(pnl*100)/100,pnl_percent:mg>0?Math.round(pnl/mg*10000)/100:0});
         }
@@ -801,6 +864,29 @@ function connect(){
 }
 connect();
 renderLogs();
+
+// Her 1 saniyede pozisyon kartlarını WebSocket fiyatıyla güncelle
+setInterval(function(){
+  if(!_pos.length || !_wsReady) return;
+  var updated = _pos.map(function(p){
+    var lp = _lp[p.symbol];
+    if(!lp || lp <= 0) return p;
+    var cq  = (+(p.notional||0)) / (+(p.entry_price||1));
+    var mg  = (+(p.notional||0)) / (+(p.leverage||10));
+    var pnl = p.side==='long' ? (lp-(+(p.entry_price||0)))*cq : ((+(p.entry_price||0))-lp)*cq;
+    return Object.assign({},p,{
+      current_price: lp,
+      pnl:           Math.round(pnl*100)/100,
+      pnl_percent:   mg>0 ? Math.round(pnl/mg*10000)/100 : 0
+    });
+  });
+  renderPositions(updated,'pos-list','pos-cnt');
+  renderPositions(updated,'pos-list2','pos-cnt2');
+  // Anlık K/Z güncelle
+  var totalUnr = updated.reduce(function(a,p){return a+(+(p.pnl||0));},0);
+  var unrEl = document.getElementById('s-unr');
+  if(unrEl){unrEl.textContent=fD(totalUnr);unrEl.className='stat-val '+(totalUnr>=0?'b':'r');}
+}, 1000);
 </script>
 </body>
 </html>
