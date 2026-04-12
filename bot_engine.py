@@ -38,9 +38,27 @@ LOOP_SECONDS   = int(os.getenv("LOOP_SECONDS", "60"))
 COINS = ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP", "BNB-USDT-SWAP", "AVAX-USDT-SWAP"]
 COIN_MAP = {c: c.replace("-USDT-SWAP", "USDT") for c in COINS}
 
-# Slot başına notional (USDT)
+# Slot başına notional (USDT) — dinamik hesaplanır
 SLOT_NOTIONAL  = float(os.getenv("SLOT_NOTIONAL", "1000"))
 MAX_POSITIONS  = int(os.getenv("MAX_POSITIONS", "3"))
+
+# Manuel açılan pozisyonları tanımak için bot'un açtığı coinleri takip et
+_bot_opened_positions: set = set()   # Bot'un açtığı inst_id'ler
+
+def _calc_dynamic_slot(balance: float, max_pos: int = None) -> float:
+    """
+    Serbest bakiyeye göre slot büyüklüğü hesapla.
+    Available bakiyenin %20'si / max pozisyon sayısı = slot
+    Min $100, Max SLOT_NOTIONAL (Railway'den)
+    """
+    if max_pos is None:
+        max_pos = MAX_POSITIONS
+    if balance <= 0:
+        return SLOT_NOTIONAL
+    # Serbest bakiyenin %80'ini kullan, MAX_POSITIONS'a böl
+    dynamic = (balance * 0.80) / max(1, max_pos)
+    # Min $100, Max SLOT_NOTIONAL
+    return float(max(100, min(dynamic, SLOT_NOTIONAL)))
 
 # ── Paylaşılan durum (mock_api ile ortak) ─────────────────────────────────────
 engine_state: Dict = {
@@ -206,32 +224,38 @@ def get_open_positions() -> list:
         positions.append(pos_data)
 
         # ── engine_state'e otomatik kaydet ───────────────────────────────────
+        # Sadece bot'un açtığı pozisyonlar yönetilir
+        # Manuel açılan pozisyonlara dokunma
         state_key = sym + ("_short" if side == "short" else "")
-        with _lock:
-            if state_key not in engine_state["open_positions"] and entry > 0:
-                try:
-                    # ATR çağrısı yerine basit yüzde bazlı SL — bloke olmaz
-                    sl_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
-                    sl_pct  = 0.015 * sl_mult   # %1.5 × çarpan
-                    if side == "long":
-                        sl = entry * (1 - sl_pct)
-                        tp = entry * (1 + sl_pct * 2)
-                    else:
-                        sl = entry * (1 + sl_pct)
-                        tp = entry * (1 - sl_pct * 2)
-                    engine_state["open_positions"][state_key] = {
-                        "stop_loss":    sl,
-                        "take_profit":  tp,
-                        "entry_price":  entry,
-                        "side":         side,
-                        "inst_id":      inst_id,
-                        "profit_stage": 0,
-                        "half_closed":  False,
-                        "recovered":    True,
-                    }
-                    _log(f"🔄 {sym} ({side}) pozisyon kurtarıldı: giriş=${entry:.4f} SL=${sl:.4f} TP=${tp:.4f}")
-                except Exception as e:
-                    _log(f"⚠️ {sym} pozisyon kayıt hatası: {e}", "warning")
+        is_bot_position = inst_id in _bot_opened_positions or state_key in engine_state["open_positions"]
+
+        if is_bot_position:
+            with _lock:
+                if state_key not in engine_state["open_positions"] and entry > 0:
+                    try:
+                        sl_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
+                        sl_pct  = 0.015 * sl_mult
+                        if side == "long":
+                            sl = entry * (1 - sl_pct)
+                            tp = entry * (1 + sl_pct * 2)
+                        else:
+                            sl = entry * (1 + sl_pct)
+                            tp = entry * (1 - sl_pct * 2)
+                        engine_state["open_positions"][state_key] = {
+                            "stop_loss":    sl,
+                            "take_profit":  tp,
+                            "entry_price":  entry,
+                            "side":         side,
+                            "inst_id":      inst_id,
+                            "profit_stage": 0,
+                            "half_closed":  False,
+                            "recovered":    True,
+                        }
+                        _log(f"🔄 {sym} ({side}) bot pozisyonu kurtarıldı: giriş=${entry:.4f} SL=${sl:.4f}")
+                    except Exception as e:
+                        _log(f"⚠️ {sym} pozisyon kayıt hatası: {e}", "warning")
+        else:
+            _log(f"👤 {sym} manuel pozisyon — dokunulmayacak (giriş:${entry:.4f})")
 
     return positions
 
@@ -1541,14 +1565,14 @@ def bot_loop():
                     tp1   = price + risk * TP1_R_MULT
                     tp2   = price + risk * TP2_R_MULT
 
-                    # Risk Manager kontrolü
-                    notional_to_use = SLOT_NOTIONAL
+                    # Dinamik slot hesapla — available bakiyeye göre
+                    notional_to_use = _calc_dynamic_slot(balance, MAX_POSITIONS)
                     if _ADVANCED_MODULES:
                         try:
                             rm = get_risk_manager()
                             rd = rm.check_trade(
                                 inst_id=inst_id, side="long",
-                                notional=SLOT_NOTIONAL,
+                                notional=notional_to_use,
                                 entry_price=price, stop_price=sl,
                                 regime=current_regime, regime_mult=regime_mult,
                             )
@@ -1558,7 +1582,6 @@ def bot_loop():
                             if rd.warnings:
                                 for w in rd.warnings:
                                     _log(f"⚠ {sym} LONG: {w}")
-                            notional_to_use = rd.position_size if rd.position_size > 0 else SLOT_NOTIONAL
                         except Exception as _rme:
                             _log(f"[RISK] Kontrol hatası: {_rme}", "warning")
 
@@ -1566,11 +1589,12 @@ def bot_loop():
                     ok = place_order(inst_id, "buy", notional_to_use, price,
                                      sl_price=sl, tp1_price=tp1, tp2_price=tp2)
                     if ok:
+                        _bot_opened_positions.add(inst_id)  # Bot açtı olarak işaretle
                         with _lock:
                             engine_state["open_positions"][sym] = {
                                 "symbol": sym, "side": "long",
                                 "entry_price": price, "stop_loss": sl,
-                                "take_profit": tp, "notional": SLOT_NOTIONAL,
+                                "take_profit": tp, "notional": notional_to_use,
                                 "opened_at": datetime.now(timezone.utc).isoformat(),
                                 "score": sig["long"]["score"],
                             }
