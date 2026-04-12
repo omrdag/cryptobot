@@ -168,8 +168,18 @@ def get_open_positions() -> list:
     raw_list = data.get("data", [])
     _log(f"[DEBUG] OKX toplam pozisyon: {len(raw_list)}")
     for p in raw_list:
-        _log(f"[DEBUG] {p.get('instId')} | pos={p.get('pos')} | posSide={p.get('posSide')} | avgPx={p.get('avgPx')}")
-        qty = float(p.get("pos", 0))
+        # Hem pos hem longQty/shortQty kontrol et
+        pos_val   = p.get("pos", "0")
+        long_qty  = p.get("longQty", "0")
+        short_qty = p.get("shortQty", "0")
+        _log(f"[DEBUG] {p.get('instId')} | pos={pos_val} | longQty={long_qty} | shortQty={short_qty} | posSide={p.get('posSide')} | avgPx={p.get('avgPx')}")
+        
+        qty = float(pos_val or 0)
+        # longQty/shortQty dolu ama pos boşsa onları kullan
+        if qty == 0 and float(long_qty or 0) > 0:
+            qty = float(long_qty)
+        elif qty == 0 and float(short_qty or 0) > 0:
+            qty = -float(short_qty)
         if qty == 0:
             continue
 
