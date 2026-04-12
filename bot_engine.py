@@ -443,16 +443,16 @@ def run_signals(positions: list) -> dict:
     for inst_id in COINS:
         sym = COIN_MAP[inst_id]
 
-        # Ana timeframe: 1dk
-        df = fetch_ohlcv(inst_id, bar="1m", limit=100)
+        # Ana timeframe: 5dk (1dk yerine — daha az API çağrısı, daha stabil)
+        df = fetch_ohlcv(inst_id, bar="5m", limit=100)
         if df is None or len(df) < 55:
-            _log(f"{sym}: yetersiz 1dk veri ({len(df) if df is not None else 0} bar)")
+            _log(f"{sym}: yetersiz veri ({len(df) if df is not None else 0} bar)")
             continue
 
-        # MTF: 5dk, 15dk ve 1H (ADX rejim tespiti + üst trend)
-        df_5m  = fetch_ohlcv(inst_id, bar="5m",  limit=80)
-        df_15m = fetch_ohlcv(inst_id, bar="15m", limit=80)
-        df_1h  = fetch_ohlcv(inst_id, bar="1H",  limit=60)  # 1 saatlik — rejim tespiti
+        # Sadece 1H — rejim tespiti için yeterli
+        df_5m  = None   # Ana timeframe zaten 5m
+        df_15m = None   # Kaldırıldı — hız için
+        df_1h  = fetch_ohlcv(inst_id, bar="1H", limit=60)
 
         hour_utc = datetime.now(timezone.utc).hour
 
