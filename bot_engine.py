@@ -653,10 +653,24 @@ def check_exits(positions: list, signals: dict):
                 sl = new_sl
 
         elif pnl_usdt >= PROFIT_LOCK_1 and profit_stage < 1:
-            # +3 USDT → SL breakeven'e çek
-            new_sl = entry
+            # +3 USDT → SL'yi kâr koruma seviyesine çek
+            # Breakeven değil — en az $2.5 USDT kâr garantile
+            # Fiyat geri dönse bile $2.5 kâr kilitlenir
+            info_sl   = get_contract_info(inst_id)
+            ct_val_sl = info_sl["ct_val"]
+            coin_qty_sl = qty * ct_val_sl
+            protect_usdt = PROFIT_LOCK_1 * 0.8   # +$3'ün %80'i = $2.4 kâr koru
+            if coin_qty_sl > 0:
+                price_diff = protect_usdt / coin_qty_sl
+                if side == "long":
+                    new_sl = entry + price_diff
+                else:
+                    new_sl = entry - price_diff
+            else:
+                new_sl = entry   # Fallback: breakeven
+
             if (side == "long" and new_sl > sl) or (side == "short" and new_sl < sl):
-                _log(f"🔒 {sym} +${pnl_usdt:.2f} KAR KİLİTLEME: SL breakeven'e çekildi (${new_sl:.4f})")
+                _log(f"🔒 {sym} +${pnl_usdt:.2f} KAR KİLİTLEME: SL ${sl:.4f} → ${new_sl:.4f} (${protect_usdt:.1f} USDT kâr korunuyor)")
                 with _lock:
                     if sym in engine_state["open_positions"]:
                         engine_state["open_positions"][sym]["stop_loss"]    = new_sl
@@ -1518,8 +1532,9 @@ def bot_loop():
                         and long_count < long_limit):
 
                     # Rejim long'a izin veriyor mu?
-                    if current_regime_obj and not current_regime_obj.allow_long:
-                        _log(f"⛔ {sym} LONG — rejim izin vermiyor ({current_regime})")
+                    # NO_TRADE dışında long açılabilir — rejim skora yansıtılır
+                    if current_regime == "NO_TRADE":
+                        _log(f"⛔ {sym} LONG — NO_TRADE rejimi")
                         continue
 
                     price = sig["long"]["entry"]
@@ -1585,8 +1600,9 @@ def bot_loop():
                         and short_count < short_limit):
 
                     # Rejim short'a izin veriyor mu?
-                    if current_regime_obj and not current_regime_obj.allow_short:
-                        _log(f"⛔ {sym} SHORT — rejim izin vermiyor ({current_regime})")
+                    # NO_TRADE dışında short açılabilir
+                    if current_regime == "NO_TRADE":
+                        _log(f"⛔ {sym} SHORT — NO_TRADE rejimi")
                         continue
 
                     price = sig["short"]["entry"]
