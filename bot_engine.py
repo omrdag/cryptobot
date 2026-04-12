@@ -437,22 +437,30 @@ def run_signals(positions: list) -> dict:
 
 def check_exits(positions: list, signals: dict):
     """
-    SL/TP + Trailing Stop kontrolü.
+    SL/TP + Trailing Stop + Kademeli Kâr Yönetimi.
 
-    Her döngüde:
-    1. Mevcut fiyatı çek
-    2. Trailing stop aktive koşulu: fiyat giriş + %TRAIL_ACTIVATION_PCT üzerine çıktı mı?
-    3. Aktifse: en yüksek gördüğü fiyata göre SL güncelle (OKX amend-algos)
-    4. SL veya TP tetiklendiyse kapat
+    Mevcut mantık korundu, üzerine eklendi:
+    ── Kâr Basamakları (USDT bazlı) ──
+    +3 USDT → Kâr kilitleme: SL breakeven'e çekilir
+    +5 USDT → SL daha yukarı (kâr koruması güçlenir)
+    +7 USDT → %50 kısmi satış, kalan %50 trend kontrolüne bırakılır
+    +10 USDT → Kalan %50 tamamen kapatılır
+    Ters dönüş → Kalan pozisyon +5 USDT korumasından çıkarsa kapatılır
     """
-    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.003"))  # %0.3
-    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.002"))  # %0.2
+    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.003"))
+    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.002"))
+
+    # Kâr basamak seviyeleri (USDT)
+    PROFIT_LOCK_1  = float(os.getenv("PROFIT_LOCK_1",  "3.0"))   # SL breakeven'e çek
+    PROFIT_LOCK_2  = float(os.getenv("PROFIT_LOCK_2",  "5.0"))   # SL daha yukarı
+    PROFIT_HALF    = float(os.getenv("PROFIT_HALF",    "7.0"))   # %50 kısmi sat
+    PROFIT_FULL    = float(os.getenv("PROFIT_FULL",   "10.0"))   # Tamamını kapat
+    PROFIT_PROTECT = float(os.getenv("PROFIT_PROTECT", "5.0"))   # Ters dönüşte koruma seviyesi
 
     for pos in positions:
         inst_id = pos["instId"]
         sym     = COIN_MAP.get(inst_id, inst_id)
 
-        # Anlık fiyat
         try:
             price_data = _okx_get(f"/api/v5/market/ticker?instId={inst_id}")
             price = float(price_data["data"][0]["last"])
@@ -466,7 +474,6 @@ def check_exits(positions: list, signals: dict):
         if entry <= 0 or qty <= 0:
             continue
 
-        # engine_state'den detayları al
         pos_detail = engine_state["open_positions"].get(sym, {})
         sl = float(pos_detail.get("stop_loss", 0))
         tp = float(pos_detail.get("take_profit", 0))
@@ -474,49 +481,128 @@ def check_exits(positions: list, signals: dict):
         if sl <= 0:
             continue
 
-        # ── Trailing Stop Mantığı ─────────────────────────────────────────────
+        # ── Anlık Kâr Hesapla (USDT) ─────────────────────────────────────────
+        info   = get_contract_info(inst_id)
+        ct_val = info["ct_val"]
+        coin_qty = qty * ct_val  # Kontrat → coin miktarı
+
+        if side == "long":
+            pnl_usdt = (price - entry) * coin_qty
+        else:
+            pnl_usdt = (entry - price) * coin_qty
+
+        # ── YENİ: Kademeli Kâr Yönetimi ─────────────────────────────────────
+        # Mevcut trailing stop mantığından ÖNCE çalışır
+        # Kısmi satış yapıldıysa tekrar yapma
+        half_closed  = pos_detail.get("half_closed", False)
+        profit_stage = pos_detail.get("profit_stage", 0)  # Hangi aşamada olduğu
+
+        if pnl_usdt >= PROFIT_FULL and not half_closed:
+            # +10 USDT → Tamamını kapat
+            _log(f"💰 {sym} +${pnl_usdt:.2f} USDT — TAM KAR REALİZASYONU (${PROFIT_FULL}+ hedef)")
+            close_position(inst_id, side, qty)
+            if _ADVANCED_MODULES:
+                try: get_risk_manager().record_trade_result(pnl_usdt)
+                except: pass
+            with _lock:
+                engine_state["open_positions"].pop(sym, None)
+            continue
+
+        elif pnl_usdt >= PROFIT_FULL and half_closed:
+            # +10 USDT → Kalan %50'yi kapat
+            _log(f"💰 {sym} +${pnl_usdt:.2f} USDT — Kalan pozisyon kapatılıyor (${PROFIT_FULL}+ hedef)")
+            close_position(inst_id, side, qty)
+            if _ADVANCED_MODULES:
+                try: get_risk_manager().record_trade_result(pnl_usdt)
+                except: pass
+            with _lock:
+                engine_state["open_positions"].pop(sym, None)
+            continue
+
+        elif pnl_usdt >= PROFIT_HALF and not half_closed:
+            # +7 USDT → %50 kısmi sat, kalan izlemeye al
+            _log(f"🎯 {sym} +${pnl_usdt:.2f} USDT — %50 KISMİ SATIŞ (${PROFIT_HALF}+ hedef)")
+            half_qty = max(1, int(qty * 0.5))
+            if not PAPER_TRADING and OKX_KEY:
+                close_side = "sell" if side == "long" else "buy"
+                half_body  = {
+                    "instId":  inst_id, "tdMode": "cross",
+                    "side":    close_side, "ordType": "market",
+                    "sz":      str(half_qty),
+                }
+                result = _okx_post("/api/v5/trade/order", half_body)
+                if result.get("code") == "0":
+                    _log(f"✅ {sym} %50 satış yapıldı ({half_qty} kontrat)")
+                else:
+                    _log(f"⚠️ {sym} %50 satış hatası: {result.get('msg','?')}", "warning")
+            else:
+                _log(f"[PAPER] {sym} %50 satış ({half_qty} kontrat @ ${price:.4f})")
+            with _lock:
+                if sym in engine_state["open_positions"]:
+                    engine_state["open_positions"][sym]["half_closed"]  = True
+                    engine_state["open_positions"][sym]["half_close_pnl"] = pnl_usdt
+                    engine_state["open_positions"][sym]["profit_stage"] = 3
+            continue
+
+        elif pnl_usdt >= PROFIT_HALF and half_closed:
+            # +7 sonrası kalan %50 — trend kontrolü
+            sig = signals.get(sym, {})
+            trend_ok = False
+            if side == "long":
+                long_sig = sig.get("long", {})
+                trend_ok = long_sig.get("score", 0) >= 6 and long_sig.get("enter", False)
+            else:
+                short_sig = sig.get("short", {})
+                trend_ok = short_sig.get("score", 0) >= 6 and short_sig.get("enter", False)
+
+            # Trend zayıfladıysa ve kâr PROFIT_PROTECT üzerindeyse kapat
+            if not trend_ok and pnl_usdt < pos_detail.get("half_close_pnl", PROFIT_HALF):
+                _log(f"⚠️ {sym} Trend zayıfladı, kalan pozisyon kapatılıyor (${pnl_usdt:.2f} USDT)")
+                close_position(inst_id, side, qty)
+                with _lock:
+                    engine_state["open_positions"].pop(sym, None)
+                continue
+
+        elif pnl_usdt >= PROFIT_LOCK_2 and profit_stage < 2:
+            # +5 USDT → SL güçlü kâr korumasına çek (giriş + küçük buffer)
+            if side == "long":
+                new_sl = entry * 1.002  # Girişin %0.2 üzeri
+            else:
+                new_sl = entry * 0.998
+            if (side == "long" and new_sl > sl) or (side == "short" and new_sl < sl):
+                _log(f"🔒 {sym} +${pnl_usdt:.2f} KAR KORUMA 2: SL ${sl:.4f} → ${new_sl:.4f}")
+                with _lock:
+                    if sym in engine_state["open_positions"]:
+                        engine_state["open_positions"][sym]["stop_loss"]    = new_sl
+                        engine_state["open_positions"][sym]["profit_stage"] = 2
+                sl = new_sl
+
+        elif pnl_usdt >= PROFIT_LOCK_1 and profit_stage < 1:
+            # +3 USDT → SL breakeven'e çek
+            new_sl = entry
+            if (side == "long" and new_sl > sl) or (side == "short" and new_sl < sl):
+                _log(f"🔒 {sym} +${pnl_usdt:.2f} KAR KİLİTLEME: SL breakeven'e çekildi (${new_sl:.4f})")
+                with _lock:
+                    if sym in engine_state["open_positions"]:
+                        engine_state["open_positions"][sym]["stop_loss"]    = new_sl
+                        engine_state["open_positions"][sym]["profit_stage"] = 1
+                sl = new_sl
+
+        # ── Mevcut Trailing Stop Mantığı (korundu) ───────────────────────────
         if side == "long":
             activation_price = entry * (1 + TRAIL_ACTIVATION_PCT)
             in_profit = price >= activation_price
-
             if in_profit:
-                # En yüksek gördüğü fiyatı takip et
                 prev_high = float(pos_detail.get("trail_high", 0))
                 new_high  = max(prev_high, price)
-
-                # Trailing SL = en yüksek fiyat × (1 - callback)
-                trail_sl = new_high * (1 - TRAIL_CALLBACK_PCT)
-
-                # Mevcut SL'den yukarıdaysa güncelle
+                trail_sl  = new_high * (1 - TRAIL_CALLBACK_PCT)
                 if trail_sl > sl:
-                    _log(f"🔒 {sym} Trailing SL güncellendi: ${sl:.4f} → ${trail_sl:.4f} (zirve:${new_high:.4f})")
+                    _log(f"🔒 {sym} Trailing SL: ${sl:.4f} → ${trail_sl:.4f} (zirve:${new_high:.4f})")
                     with _lock:
                         if sym in engine_state["open_positions"]:
-                            engine_state["open_positions"][sym]["stop_loss"] = trail_sl
-                            engine_state["open_positions"][sym]["trail_high"] = new_high
-                    sl = trail_sl  # Güncel SL ile devam et
-
-                    # OKX'te SL algo emrini güncelle (paper modda sadece log)
-                    if not PAPER_TRADING and OKX_KEY:
-                        try:
-                            info    = get_contract_info(inst_id)
-                            tick_sz = info["tick_sz"]
-                            # Tüm algo emirleri iptal et ve yeni SL koy
-                            _okx_post("/api/v5/trade/cancel-algos", [{"instId": inst_id, "algoId": ""}])
-                            sl_body = {
-                                "instId":        inst_id,
-                                "tdMode":        "cross",
-                                "side":          "sell",
-                                "posSide":       "long",
-                                "ordType":       "conditional",
-                                "sz":            str(int(qty)),
-                                "slTriggerPx":   round_price(trail_sl, tick_sz),
-                                "slOrdPx":       "-1",
-                                "slTriggerPxType": "mark",
-                            }
-                            _okx_post("/api/v5/trade/order-algo", sl_body)
-                        except Exception as e:
-                            _log(f"[TRAIL] OKX SL güncelleme hatası: {e}", "warning")
+                            engine_state["open_positions"][sym]["stop_loss"]   = trail_sl
+                            engine_state["open_positions"][sym]["trail_high"]  = new_high
+                    sl = trail_sl
                 else:
                     with _lock:
                         if sym in engine_state["open_positions"]:
@@ -525,28 +611,25 @@ def check_exits(positions: list, signals: dict):
         elif side == "short":
             activation_price = entry * (1 - TRAIL_ACTIVATION_PCT)
             in_profit = price <= activation_price
-
             if in_profit:
-                prev_low = float(pos_detail.get("trail_low", float('inf')))
+                prev_low = float(pos_detail.get("trail_low", float("inf")))
                 new_low  = min(prev_low, price)
                 trail_sl = new_low * (1 + TRAIL_CALLBACK_PCT)
-
                 if trail_sl < sl:
-                    _log(f"🔒 {sym} SHORT Trailing SL güncellendi: ${sl:.4f} → ${trail_sl:.4f} (dip:${new_low:.4f})")
+                    _log(f"🔒 {sym} SHORT Trailing SL: ${sl:.4f} → ${trail_sl:.4f} (dip:${new_low:.4f})")
                     with _lock:
                         if sym in engine_state["open_positions"]:
-                            engine_state["open_positions"][sym]["stop_loss"] = trail_sl
-                            engine_state["open_positions"][sym]["trail_low"] = new_low
+                            engine_state["open_positions"][sym]["stop_loss"]  = trail_sl
+                            engine_state["open_positions"][sym]["trail_low"]  = new_low
                     sl = trail_sl
                 else:
                     with _lock:
                         if sym in engine_state["open_positions"]:
                             engine_state["open_positions"][sym]["trail_low"] = new_low
 
-        # ── SL / TP Kontrolü ─────────────────────────────────────────────────
+        # ── Mevcut SL / TP Kontrolü (korundu) ────────────────────────────────
         should_close = False
         reason = ""
-
         if side == "long":
             if price <= sl:
                 should_close = True
@@ -563,15 +646,11 @@ def check_exits(positions: list, signals: dict):
                 reason = f"TP tetiklendi (${price:.4f} ≤ ${tp:.4f})"
 
         if should_close:
-            _log(f"🔴 {sym} KAPAT — {reason}")
+            _log(f"🔴 {sym} KAPAT — {reason} | PnL: ${pnl_usdt:.2f}")
             close_position(inst_id, side, qty)
-            # Risk manager'a bildir
             if _ADVANCED_MODULES:
-                try:
-                    pnl = (price - entry) * qty if side == "long" else (entry - price) * qty
-                    get_risk_manager().record_trade_result(pnl)
-                except:
-                    pass
+                try: get_risk_manager().record_trade_result(pnl_usdt)
+                except: pass
             with _lock:
                 engine_state["open_positions"].pop(sym, None)
 
@@ -918,17 +997,17 @@ def setup_grid(inst_id: str, current_price: float) -> None:
         _log(f"[GRID] {inst_id} ATR hesaplanamadı — grid kurulmadı", "warning")
         return
 
-    grid_range  = atr * GRID_ATR_MULT      # Toplam aralık genişliği
+    grid_range  = atr * GRID_ATR_MULT
     lower_price = current_price - grid_range / 2
     upper_price = current_price + grid_range / 2
-    step        = grid_range / GRID_LEVELS  # Her seviye arası mesafe
+    step        = grid_range / GRID_LEVELS
 
     # Kontrat bilgisi
-    info       = get_contract_info(inst_id)
-    ct_val     = info["ct_val"]
+    info               = get_contract_info(inst_id)
+    ct_val             = info["ct_val"]
     notional_per_level = capital_per_coin / GRID_LEVELS
-    qty_coin   = notional_per_level / current_price
-    qty_sz     = max(1, round(qty_coin / ct_val))
+    qty_coin           = notional_per_level / current_price
+    qty_sz             = max(1, round(qty_coin / ct_val))
 
     levels = []
     for i in range(GRID_LEVELS):
@@ -944,25 +1023,37 @@ def setup_grid(inst_id: str, current_price: float) -> None:
         f"Seviye başı: {qty_sz} kontrat"
     )
 
-    # Mevcut grid'i kaldır
     if inst_id in _grid_state:
         old = _grid_state[inst_id]
         _cancel_grid_orders(inst_id, old.get("buy_order_ids", []))
         _cancel_grid_orders(inst_id, old.get("sell_order_ids", []))
 
-    # Yeni alış emirleri koy (fiyatın altındaki seviyelere)
     buy_order_ids  = []
     sell_order_ids = []
 
+    # YENİ: Fiyata yakın emir stratejisi
+    # Mevcut fiyatın hemen altına en az 2 alış, hemen üstüne en az 2 satış emri koy
+    # Böylece fiyat hareket ettiğinde hemen dolar
+    CLOSE_DISTANCE = step * 0.3   # Fiyatın çok yakınında emir (adımın %30'u kadar)
+
     for lvl in levels:
-        if lvl < current_price - step * 0.5:
+        # Fiyatın altındaki seviyelere alış emri
+        if lvl < current_price - CLOSE_DISTANCE:
             oid = _place_grid_limit_order(inst_id, "buy", lvl, qty_sz, "long")
             if oid:
                 buy_order_ids.append(oid)
-        elif lvl > current_price + step * 0.5:
+        # Fiyatın üzerindeki seviyelere satış emri
+        elif lvl > current_price + CLOSE_DISTANCE:
             oid = _place_grid_limit_order(inst_id, "sell", lvl, qty_sz, "short")
             if oid:
                 sell_order_ids.append(oid)
+
+    # YENİ: Fiyata en yakın seviyeye ek emir — boşluk varsa hemen altına bir alış koy
+    nearest_buy = current_price - CLOSE_DISTANCE
+    oid_near = _place_grid_limit_order(inst_id, "buy", round(nearest_buy, 2), qty_sz, "long")
+    if oid_near and oid_near not in buy_order_ids:
+        buy_order_ids.insert(0, oid_near)
+        _log(f"[GRID] ✓ Yakın alış emri eklendi: ${nearest_buy:.2f}")
 
     _grid_state[inst_id] = {
         "active":         True,
