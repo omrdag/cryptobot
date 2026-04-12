@@ -210,16 +210,15 @@ def get_open_positions() -> list:
         with _lock:
             if state_key not in engine_state["open_positions"] and entry > 0:
                 try:
-                    atr = _calc_atr_14(inst_id, bar="1H")
-                    if atr <= 0:
-                        atr = entry * 0.015
+                    # ATR çağrısı yerine basit yüzde bazlı SL — bloke olmaz
                     sl_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
+                    sl_pct  = 0.015 * sl_mult   # %1.5 × çarpan
                     if side == "long":
-                        sl = entry - atr * sl_mult
-                        tp = entry + atr * sl_mult * 2
+                        sl = entry * (1 - sl_pct)
+                        tp = entry * (1 + sl_pct * 2)
                     else:
-                        sl = entry + atr * sl_mult
-                        tp = entry - atr * sl_mult * 2
+                        sl = entry * (1 + sl_pct)
+                        tp = entry * (1 - sl_pct * 2)
                     engine_state["open_positions"][state_key] = {
                         "stop_loss":    sl,
                         "take_profit":  tp,
@@ -535,17 +534,15 @@ def check_exits(positions: list, signals: dict):
         # Deploy sonrası memory sıfırlandığında eski pozisyonların SL'i kaybolur.
         # Bu durumda ATR bazlı acil SL hesapla ve engine_state'e kaydet.
         if sl <= 0 and entry > 0:
-            atr = _calc_atr_14(inst_id, bar="1H")
-            if atr <= 0:
-                atr = entry * 0.015  # ATR alınamazsa %1.5 varsayılan
-            sl_atr_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
+            sl_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
+            sl_pct  = 0.015 * sl_mult
             if side == "long":
-                sl = entry - atr * sl_atr_mult
-                tp = entry + atr * sl_atr_mult * 2 if tp <= 0 else tp
+                sl = entry * (1 - sl_pct)
+                tp = entry * (1 + sl_pct * 2) if tp <= 0 else tp
             else:
-                sl = entry + atr * sl_atr_mult
-                tp = entry - atr * sl_atr_mult * 2 if tp <= 0 else tp
-            _log(f"⚠️ {sym} SL kayıp — ATR bazlı yeniden hesaplandı: SL=${sl:.4f} (giriş=${entry:.4f})")
+                sl = entry * (1 + sl_pct)
+                tp = entry * (1 - sl_pct * 2) if tp <= 0 else tp
+            _log(f"⚠️ {sym} SL yeniden hesaplandı: ${sl:.4f}")
             with _lock:
                 if sym not in engine_state["open_positions"]:
                     engine_state["open_positions"][sym] = {}
