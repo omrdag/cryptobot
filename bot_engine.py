@@ -158,6 +158,7 @@ def get_balance() -> float:
 def get_open_positions() -> list:
     """
     OKX'teki açık pozisyonları al.
+    Hedge mode'da hem long hem short pos ayrı gelir.
     Deploy sonrası memory sıfırlandığında pozisyonları engine_state'e otomatik kaydet.
     """
     if not OKX_KEY:
@@ -165,15 +166,26 @@ def get_open_positions() -> list:
     data = _okx_get("/api/v5/account/positions?instType=SWAP")
     positions = []
     for p in data.get("data", []):
+        # Hedge mode'da pos pozitif=long, negatif=short
+        # longQty / shortQty alanları da olabilir
         qty = float(p.get("pos", 0))
         if qty == 0:
             continue
-        inst_id = p.get("instId", "")
-        side    = "long" if qty > 0 else "short"
-        entry   = float(p.get("avgPx", 0))
-        sym     = COIN_MAP.get(inst_id, inst_id)
 
-        positions.append({
+        inst_id  = p.get("instId", "")
+        pos_side = p.get("posSide", "")  # "long", "short", veya "net"
+
+        if pos_side == "long":
+            side = "long"
+        elif pos_side == "short":
+            side = "short"
+        else:
+            side = "long" if qty > 0 else "short"
+
+        entry = float(p.get("avgPx", 0))
+        sym   = COIN_MAP.get(inst_id, inst_id)
+
+        pos_data = {
             "instId":   inst_id,
             "side":     side,
             "qty":      abs(qty),
@@ -182,12 +194,13 @@ def get_open_positions() -> list:
             "leverage": int(float(p.get("lever", LEVERAGE))),
             "avgPx":    entry,
             "pos":      abs(qty),
-        })
+        }
+        positions.append(pos_data)
 
-        # ── engine_state'e otomatik kaydet (deploy sonrası recovery) ──────────
+        # ── engine_state'e otomatik kaydet ───────────────────────────────────
+        state_key = sym + ("_short" if side == "short" else "")
         with _lock:
-            if sym not in engine_state["open_positions"] and entry > 0:
-                # ATR bazlı SL hesapla
+            if state_key not in engine_state["open_positions"] and entry > 0:
                 try:
                     atr = _calc_atr_14(inst_id, bar="1H")
                     if atr <= 0:
@@ -199,17 +212,17 @@ def get_open_positions() -> list:
                     else:
                         sl = entry + atr * sl_mult
                         tp = entry - atr * sl_mult * 2
-                    engine_state["open_positions"][sym] = {
-                        "stop_loss":   sl,
-                        "take_profit": tp,
-                        "entry_price": entry,
-                        "side":        side,
-                        "inst_id":     inst_id,
+                    engine_state["open_positions"][state_key] = {
+                        "stop_loss":    sl,
+                        "take_profit":  tp,
+                        "entry_price":  entry,
+                        "side":         side,
+                        "inst_id":      inst_id,
                         "profit_stage": 0,
                         "half_closed":  False,
-                        "recovered":    True,  # Deploy sonrası kurtarıldı
+                        "recovered":    True,
                     }
-                    _log(f"🔄 {sym} pozisyon kurtarıldı: giriş=${entry:.4f} SL=${sl:.4f} TP=${tp:.4f}")
+                    _log(f"🔄 {sym} ({side}) pozisyon kurtarıldı: giriş=${entry:.4f} SL=${sl:.4f} TP=${tp:.4f}")
                 except Exception as e:
                     _log(f"⚠️ {sym} pozisyon kayıt hatası: {e}", "warning")
 
