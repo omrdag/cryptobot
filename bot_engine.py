@@ -48,17 +48,18 @@ _bot_opened_positions: set = set()   # Bot'un açtığı inst_id'ler
 def _calc_dynamic_slot(balance: float, max_pos: int = None) -> float:
     """
     Serbest bakiyeye göre slot büyüklüğü hesapla.
-    Available bakiyenin %20'si / max pozisyon sayısı = slot
-    Min $100, Max SLOT_NOTIONAL (Railway'den)
+    Available bakiyenin %80'i / max pozisyon sayısı = slot
+    Min $50, Max SLOT_NOTIONAL (Railway'den)
     """
     if max_pos is None:
         max_pos = MAX_POSITIONS
     if balance <= 0:
-        return SLOT_NOTIONAL
+        return max(50.0, SLOT_NOTIONAL)
     # Serbest bakiyenin %80'ini kullan, MAX_POSITIONS'a böl
     dynamic = (balance * 0.80) / max(1, max_pos)
-    # Min $100, Max SLOT_NOTIONAL
-    return float(max(100, min(dynamic, SLOT_NOTIONAL)))
+    # Min $50, Max SLOT_NOTIONAL
+    result = float(max(50.0, min(dynamic, SLOT_NOTIONAL)))
+    return result
 
 # ── Paylaşılan durum (mock_api ile ortak) ─────────────────────────────────────
 engine_state: Dict = {
@@ -536,6 +537,12 @@ def check_exits(positions: list, signals: dict):
     for pos in positions:
         inst_id = pos["instId"]
         sym     = COIN_MAP.get(inst_id, inst_id)
+
+        # ── Manuel pozisyonlara dokunma ───────────────────────────────────────
+        if inst_id not in _bot_opened_positions:
+            state_key = sym + ("_short" if pos.get("side") == "short" else "")
+            if state_key not in engine_state["open_positions"] and sym not in engine_state["open_positions"]:
+                continue  # Bot açmadı, atla
 
         try:
             price_data = _okx_get(f"/api/v5/market/ticker?instId={inst_id}")
