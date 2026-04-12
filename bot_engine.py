@@ -165,9 +165,10 @@ def get_open_positions() -> list:
         return []
     data = _okx_get("/api/v5/account/positions?instType=SWAP")
     positions = []
-    for p in data.get("data", []):
-        # Hedge mode'da pos pozitif=long, negatif=short
-        # longQty / shortQty alanları da olabilir
+    raw_list = data.get("data", [])
+    _log(f"[DEBUG] OKX toplam pozisyon: {len(raw_list)}")
+    for p in raw_list:
+        _log(f"[DEBUG] {p.get('instId')} | pos={p.get('pos')} | posSide={p.get('posSide')} | avgPx={p.get('avgPx')}")
         qty = float(p.get("pos", 0))
         if qty == 0:
             continue
