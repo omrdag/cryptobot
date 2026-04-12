@@ -64,6 +64,7 @@ def _log(msg: str, level: str = "info"):
     ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
     line = f"[{ts}] {msg}"
     getattr(log, level)(msg)
+    print(f"cryptobot: {line}", flush=True)  # Railway stdout
     with _lock:
         engine_state["logs"].append(line)
         if len(engine_state["logs"]) > 50:
