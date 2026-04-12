@@ -241,6 +241,7 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
         "instId":  inst_id,
         "tdMode":  "cross",
         "side":    side,
+        "posSide": pos_side,   # Hedge mode zorunlu
         "ordType": "market",
         "sz":      str(int(qty_contract)),
     }
@@ -248,31 +249,20 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
     result = _okx_post("/api/v5/trade/order", body)
     ok = result.get("code") == "0"
     if not ok:
-        # One-way mod başarısız olursa hedge mod dene
-        body_hedge = {
-            "instId":  inst_id,
-            "tdMode":  "cross",
-            "side":    side,
-            "posSide": pos_side,
-            "ordType": "market",
-            "sz":      str(int(qty_contract)),
-        }
-        result = _okx_post("/api/v5/trade/order", body_hedge)
-        ok = result.get("code") == "0"
-        if not ok:
-            _log(f"❌ Emir reddedildi: {inst_id} → {result.get('msg','?')}", "error")
-            return False
+        _log(f"❌ Emir reddedildi: {inst_id} → {result.get('msg','?')}", "error")
+        return False
 
     order_id = result.get("data", [{}])[0].get("ordId", "")
     _log(f"✅ {side.upper()} {inst_id} {int(qty_contract)} kontrat | ordId={order_id}")
 
-    # ── 2. SL algo emri (tüm pozisyon) ───────────────────────────────────────
+    # ── 2. SL algo emri ───────────────────────────────────────────────────────
     if sl_price > 0:
         sl_side = "sell" if pos_side == "long" else "buy"
         sl_body = {
             "instId":          inst_id,
             "tdMode":          "cross",
             "side":            sl_side,
+            "posSide":         pos_side,
             "ordType":         "conditional",
             "sz":              str(int(qty_contract)),
             "slTriggerPx":     round_price(sl_price, tick_sz),
@@ -296,6 +286,7 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
         "instId":        inst_id,
         "tdMode":        "cross",
         "side":          trail_side,
+        "posSide":       pos_side,
         "ordType":       "move_order_stop",
         "sz":            str(int(qty_contract)),
         "activePx":      round_price(trail_active_px, tick_sz),
@@ -306,13 +297,12 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
         _log(f"🎯 Trailing Stop: aktif=${trail_active_px:.4f} | geri=%{TRAIL_CALLBACK_PCT*100:.1f}")
     else:
         _log(f"⚠️ Trailing Stop ayarlanamadı: {trail_result.get('msg','?')}", "warning")
-        # Trailing başarısız olursa TP1/TP2 algo emirlerine düş
         if tp1_price > 0:
             tp1_qty  = max(1, int(qty_contract * 0.50))
             tp1_side = "sell" if pos_side == "long" else "buy"
             tp1_body = {
                 "instId": inst_id, "tdMode": "cross", "side": tp1_side,
-                "ordType": "conditional", "sz": str(tp1_qty),
+                "posSide": pos_side, "ordType": "conditional", "sz": str(tp1_qty),
                 "tpTriggerPx": round_price(tp1_price, tick_sz),
                 "tpOrdPx": "-1", "tpTriggerPxType": "mark",
             }
@@ -323,7 +313,7 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
                 tp2_side = "sell" if pos_side == "long" else "buy"
                 tp2_body = {
                     "instId": inst_id, "tdMode": "cross", "side": tp2_side,
-                    "ordType": "conditional", "sz": str(tp2_qty),
+                    "posSide": pos_side, "ordType": "conditional", "sz": str(tp2_qty),
                     "tpTriggerPx": round_price(tp2_price, tick_sz),
                     "tpOrdPx": "-1", "tpTriggerPxType": "mark",
                 }
@@ -358,6 +348,7 @@ def close_position(inst_id: str, side: str, qty: float):
         "instId":  inst_id,
         "tdMode":  "cross",
         "side":    close_side,
+        "posSide": side,       # Hedge mode: long pozisyonu kapatmak için "long"
         "ordType": "market",
         "sz":      str(abs(int(float(sz)))),
     }
@@ -937,7 +928,11 @@ def _calc_atr_14(inst_id: str, bar: str = "1H") -> float:
 
 def _place_grid_limit_order(inst_id: str, side: str, price: float,
                              sz: int, pos_side: str) -> Optional[str]:
-    """Grid için limit emir gönder — One-way mode (posSide yok)."""
+    """
+    Grid limit emir — Hedge mode (posSide zorunlu).
+    side: "buy" → pos_side: "long"
+    side: "sell" → pos_side: "short"
+    """
     if PAPER_TRADING:
         fake_id = f"PAPER-{inst_id}-{side}-{int(price)}"
         _log(f"[PAPER GRID] {side.upper()} {inst_id} {sz}k @ ${price:.4f}")
@@ -947,27 +942,28 @@ def _place_grid_limit_order(inst_id: str, side: str, price: float,
     try:
         info    = get_contract_info(inst_id)
         tick_sz = info["tick_sz"]
+        px      = round_price(price, tick_sz)
 
-        # One-way mode — posSide parametresi yok
         body = {
             "instId":  inst_id,
             "tdMode":  "cross",
             "side":    side,
+            "posSide": pos_side,   # Hedge mode zorunlu
             "ordType": "limit",
-            "px":      round_price(price, tick_sz),
+            "px":      px,
             "sz":      str(sz),
         }
         result = _okx_post("/api/v5/trade/order", body)
         if result.get("code") == "0":
             oid = result["data"][0]["ordId"]
-            _log(f"[GRID] ✓ {side.upper()} {inst_id} @ ${price:.2f} — emir kabul edildi ({oid[:8]})")
+            _log(f"[GRID] ✓ {side.upper()} {inst_id} @ ${price:.2f} ({oid[:8]})")
             return oid
 
-        err_msg = result.get("msg") or result.get("data", [{}])[0].get("sMsg", "?")
-        _log(f"[GRID] Emir hatası: {err_msg}", "warning")
+        err = result.get("data", [{}])[0].get("sMsg") or result.get("msg", "?")
+        _log(f"[GRID] ✗ {inst_id} reddedildi: {err}", "warning")
         return None
     except Exception as e:
-        _log(f"[GRID] Emir gönderme hatası: {e}", "warning")
+        _log(f"[GRID] Hata: {e}", "warning")
         return None
 
 
