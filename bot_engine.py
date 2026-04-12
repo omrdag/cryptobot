@@ -155,7 +155,10 @@ def get_balance() -> float:
 
 
 def get_open_positions() -> list:
-    """OKX'teki açık pozisyonlar."""
+    """
+    OKX'teki açık pozisyonları al.
+    Deploy sonrası memory sıfırlandığında pozisyonları engine_state'e otomatik kaydet.
+    """
     if not OKX_KEY:
         return []
     data = _okx_get("/api/v5/account/positions?instType=SWAP")
@@ -164,14 +167,51 @@ def get_open_positions() -> list:
         qty = float(p.get("pos", 0))
         if qty == 0:
             continue
+        inst_id = p.get("instId", "")
+        side    = "long" if qty > 0 else "short"
+        entry   = float(p.get("avgPx", 0))
+        sym     = COIN_MAP.get(inst_id, inst_id)
+
         positions.append({
-            "instId":   p.get("instId", ""),
-            "side":     "long" if qty > 0 else "short",
+            "instId":   inst_id,
+            "side":     side,
             "qty":      abs(qty),
-            "entry":    float(p.get("avgPx", 0)),
+            "entry":    entry,
             "pnl":      float(p.get("upl", 0)),
             "leverage": int(float(p.get("lever", LEVERAGE))),
+            "avgPx":    entry,
+            "pos":      abs(qty),
         })
+
+        # ── engine_state'e otomatik kaydet (deploy sonrası recovery) ──────────
+        with _lock:
+            if sym not in engine_state["open_positions"] and entry > 0:
+                # ATR bazlı SL hesapla
+                try:
+                    atr = _calc_atr_14(inst_id, bar="1H")
+                    if atr <= 0:
+                        atr = entry * 0.015
+                    sl_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
+                    if side == "long":
+                        sl = entry - atr * sl_mult
+                        tp = entry + atr * sl_mult * 2
+                    else:
+                        sl = entry + atr * sl_mult
+                        tp = entry - atr * sl_mult * 2
+                    engine_state["open_positions"][sym] = {
+                        "stop_loss":   sl,
+                        "take_profit": tp,
+                        "entry_price": entry,
+                        "side":        side,
+                        "inst_id":     inst_id,
+                        "profit_stage": 0,
+                        "half_closed":  False,
+                        "recovered":    True,  # Deploy sonrası kurtarıldı
+                    }
+                    _log(f"🔄 {sym} pozisyon kurtarıldı: giriş=${entry:.4f} SL=${sl:.4f} TP=${tp:.4f}")
+                except Exception as e:
+                    _log(f"⚠️ {sym} pozisyon kayıt hatası: {e}", "warning")
+
     return positions
 
 
