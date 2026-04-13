@@ -562,9 +562,7 @@ def check_exits(positions: list, signals: dict):
         sl = float(pos_detail.get("stop_loss", 0))
         tp = float(pos_detail.get("take_profit", 0))
 
-        # ── Kritik: SL yoksa otomatik hesapla ve kaydet ───────────────────────
-        # Deploy sonrası memory sıfırlandığında eski pozisyonların SL'i kaybolur.
-        # Bu durumda ATR bazlı acil SL hesapla ve engine_state'e kaydet.
+        # SL yoksa sadece kaydet ama tetikleme — OKX kendi SL emrini yönetir
         if sl <= 0 and entry > 0:
             sl_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
             sl_pct  = 0.015 * sl_mult
@@ -574,7 +572,6 @@ def check_exits(positions: list, signals: dict):
             else:
                 sl = entry * (1 + sl_pct)
                 tp = entry * (1 - sl_pct * 2) if tp <= 0 else tp
-            _log(f"⚠️ {sym} SL yeniden hesaplandı: ${sl:.4f}")
             with _lock:
                 if sym not in engine_state["open_positions"]:
                     engine_state["open_positions"][sym] = {}
@@ -582,6 +579,9 @@ def check_exits(positions: list, signals: dict):
                 engine_state["open_positions"][sym]["take_profit"] = tp
                 engine_state["open_positions"][sym]["entry_price"] = entry
                 engine_state["open_positions"][sym]["side"]        = side
+            # SL yeni hesaplandı — bu döngüde SL tetikleme yapma
+            # OKX'teki algo emri zaten var, ona güven
+            sl = 0   # Sıfırla — aşağıdaki SL kontrolü çalışmasın
 
         # ── Anlık Kâr Hesapla (USDT) ─────────────────────────────────────────
         info   = get_contract_info(inst_id)
