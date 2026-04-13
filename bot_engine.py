@@ -462,7 +462,7 @@ def run_signals(positions: list) -> dict:
     long_strat  = PullbackLongStrategy(min_score=LONG_MIN_SCORE)
     short_strat = PullbackShortStrategy(min_score=LONG_MIN_SCORE)
 
-    open_syms = {p["instId"] for p in positions}
+    open_syms = {p["instId"] for p in positions if p["instId"] in _bot_opened_positions}
     signals   = {}
 
     for inst_id in COINS:
@@ -1509,16 +1509,18 @@ def bot_loop():
                     _log(f"[GRID] Döngü hatası: {_ge}", "warning")
 
             # 6. Emir gönder
-            open_count  = len(positions)
-            hour_ok     = _is_good_trading_hour()
-            hour_utc    = datetime.now(timezone.utc).hour
+            # Sadece bot'un açtığı pozisyonları say — manuel pozisyonlar limite dahil değil
+            bot_positions = [p for p in positions if p["instId"] in _bot_opened_positions]
+            open_count    = len(bot_positions)
+            hour_ok       = _is_good_trading_hour()
+            hour_utc      = datetime.now(timezone.utc).hour
 
-            # Mevcut pozisyonları coin ve yön bazında indeksle
-            open_longs  = {p["instId"] for p in positions if p.get("side") == "long"}
-            open_shorts = {p["instId"] for p in positions if p.get("side") == "short"}
+            # Mevcut BOT pozisyonlarını coin ve yön bazında indeksle
+            open_longs  = {p["instId"] for p in bot_positions if p.get("side") == "long"}
+            open_shorts = {p["instId"] for p in bot_positions if p.get("side") == "short"}
 
-            # Slot bölüşümü: MAX_POSITIONS yarısı LONG, yarısı SHORT
-            long_limit  = MAX_POSITIONS // 2 + (MAX_POSITIONS % 2)  # Üst yarı LONG (tek sayıda +1)
+            # Slot bölüşümü
+            long_limit  = MAX_POSITIONS // 2 + (MAX_POSITIONS % 2)
             short_limit = MAX_POSITIONS // 2
 
             long_count  = len(open_longs)
