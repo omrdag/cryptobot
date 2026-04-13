@@ -706,10 +706,14 @@ def check_exits(positions: list, signals: dict):
                         engine_state["open_positions"][sym]["profit_stage"] = 1
                 sl = new_sl
 
-        # ── Mevcut Trailing Stop Mantığı (korundu) ───────────────────────────
+        # ── Trailing Stop — Sadece +$3 USDT sonrası aktif ──────────────────
+        # Kâr basamaklarına ulaşmadan trailing kapatmasın
+        TRAIL_MIN_PROFIT = PROFIT_LOCK_1  # En az +$3 USDT kâr olunca aktif
+        trail_profit_ok  = pnl_usdt >= TRAIL_MIN_PROFIT
+
         if side == "long":
             activation_price = entry * (1 + TRAIL_ACTIVATION_PCT)
-            in_profit = price >= activation_price
+            in_profit = price >= activation_price and trail_profit_ok
             if in_profit:
                 prev_high = float(pos_detail.get("trail_high", 0))
                 new_high  = max(prev_high, price)
@@ -728,7 +732,7 @@ def check_exits(positions: list, signals: dict):
 
         elif side == "short":
             activation_price = entry * (1 - TRAIL_ACTIVATION_PCT)
-            in_profit = price <= activation_price
+            in_profit = price <= activation_price and trail_profit_ok
             if in_profit:
                 prev_low = float(pos_detail.get("trail_low", float("inf")))
                 new_low  = min(prev_low, price)
