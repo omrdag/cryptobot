@@ -1515,6 +1515,8 @@ def bot_loop():
             hour_ok       = _is_good_trading_hour()
             hour_utc      = datetime.now(timezone.utc).hour
 
+            _log(f"[EMIR] bot_pos:{open_count} max:{MAX_POSITIONS} sinyaller:{len(signals)}")
+
             # Mevcut BOT pozisyonlarını coin ve yön bazında indeksle
             open_longs  = {p["instId"] for p in bot_positions if p.get("side") == "long"}
             open_shorts = {p["instId"] for p in bot_positions if p.get("side") == "short"}
