@@ -508,7 +508,7 @@ def run_signals(positions: list) -> dict:
             status = f"SHORT ({short_res.score}/10)"
         else:
             status = f"HOLD (L:{long_res.score} S:{short_res.score})"
-        _log(f"{sym}: {status}")
+        _log(f"{sym}: {status} | enter={long_res.should_enter}")
 
     return signals
 
