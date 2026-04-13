@@ -335,7 +335,8 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
     result = _okx_post("/api/v5/trade/order", body)
     ok = result.get("code") == "0"
     if not ok:
-        _log(f"❌ Emir reddedildi: {inst_id} → {result.get('msg','?')}", "error")
+        err = result.get("data", [{}])[0].get("sMsg") or result.get("msg", "?")
+        _log(f"❌ Emir reddedildi: {inst_id} → {err} (code:{result.get('code')})", "error")
         return False
 
     order_id = result.get("data", [{}])[0].get("ordId", "")
@@ -458,8 +459,8 @@ def run_signals(positions: list) -> dict:
     from pullback_long  import PullbackLongStrategy
     from pullback_short import PullbackShortStrategy
 
-    long_strat  = PullbackLongStrategy(min_score=7)
-    short_strat = PullbackShortStrategy(min_score=7)
+    long_strat  = PullbackLongStrategy(min_score=LONG_MIN_SCORE)
+    short_strat = PullbackShortStrategy(min_score=LONG_MIN_SCORE)
 
     open_syms = {p["instId"] for p in positions}
     signals   = {}
@@ -1572,8 +1573,8 @@ def bot_loop():
                     tp1   = price + risk * TP1_R_MULT
                     tp2   = price + risk * TP2_R_MULT
 
-                    # Dinamik slot hesapla — available bakiyeye göre
-                    notional_to_use = _calc_dynamic_slot(balance, MAX_POSITIONS)
+                    # Sabit slot — Railway SLOT_NOTIONAL değeri
+                    notional_to_use = SLOT_NOTIONAL
                     if _ADVANCED_MODULES:
                         try:
                             rm = get_risk_manager()
