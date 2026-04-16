@@ -26,12 +26,17 @@ try:
     from coin_selector import score_coins, format_selection_log, TIER_1
     from risk_manager import get_risk_manager
     from entry_recycler import get_recycler
-    _ADVANCED_MODULES = True
-except ImportError as _ie:
-    _ADVANCED_MODULES = False
-    logging.getLogger("bot_engine").warning(f"Gelişmiş modüller yüklenemedi: {_ie}")
-
-log = logging.getLogger("bot_engine")
+   29    _ADVANCED_MODULES = True
+30  except ImportError as _ie:
+31      _ADVANCED_MODULES = False
+32      logging.getLogger("bot_engine").warning(...)
+33
+34  # ← Bu satır tamamen sola dayalı olmalı (indent yok)
+35  try:
+36      import entry_scorer as _scorer
+37      _SCORER_AVAILABLE = True
+38  except ImportError:
+39      _SCORER_AVAILABLE = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
 OKX_KEY        = os.getenv("OKX_API_KEY", "")
@@ -1117,12 +1122,60 @@ def bot_loop():
                         and long_count < long_limit):
 
                     # ✅ YENİ: RSI Aşırı Alım Filtresi
-                    if rsi_current > LONG_RSI_MAX and rsi_current > 0:
-                        _log(f"⛔ [LONG RSI BLOKE] {sym} — RSI:{rsi_current:.1f} > {LONG_RSI_MAX} (aşırı alım, giriş engellendi)")
-                        continue
+                    # ── YENİ: Entry Scorer onayı ─────────────────────────────────────
+        if _SCORER_AVAILABLE:
+            try:
+                _scorer.clear_cache()
+                df_5m_sc  = _scorer.get_cached_df(inst_id, "5m", 60)
+                df_1m_sc  = _scorer.get_cached_df(inst_id, "1m", 35)
+                df_1h_sc  = df_1h
+                approved, sc_result = _scorer.approve(
+                    inst_id              = inst_id,
+                    side                 = "long",
+                    df_5m                = df_5m_sc,
+                    regime               = current_regime,
+                    open_positions_count = open_count,
+                    max_positions        = MAX_POSITIONS,
+                    daily_pnl            = engine_state.get("daily_pnl", 0.0),
+                    max_daily_loss       = float(os.getenv("MAX_DAILY_LOSS_USD", "50")),
+                    existing_sides       = [p.get("side","long") for p in bot_positions],
+                    df_1h                = df_1h_sc,
+                    df_1m                = df_1m_sc,
+                )
+                if not approved:
+                    _log(f"⛔ [SCORER] {sym} LONG reddedildi — {sc_result.reject_reason} | skor:{sc_result.total}/16")
+                    continue
+            except Exception as _se:
+                _log(f"[SCORER] {sym} hata (devam ediliyor): {_se}", "warning")
+        # ── Scorer onayı sonu ────────────────────────────────────────────
 
                     if current_regime == "NO_TRADE":
                         _log(f"⛔ {sym} LONG — NO_TRADE rejimi")
+                      # ── YENİ: Entry Scorer onayı ─────────────────────────────────────
+        if _SCORER_AVAILABLE:
+            try:
+                df_5m_sc  = _scorer.get_cached_df(inst_id, "5m", 60)
+                df_1m_sc  = _scorer.get_cached_df(inst_id, "1m", 35)
+                df_1h_sc  = df_1h
+                approved, sc_result = _scorer.approve(
+                    inst_id              = inst_id,
+                    side                 = "short",
+                    df_5m                = df_5m_sc,
+                    regime               = current_regime,
+                    open_positions_count = open_count,
+                    max_positions        = MAX_POSITIONS,
+                    daily_pnl            = engine_state.get("daily_pnl", 0.0),
+                    max_daily_loss       = float(os.getenv("MAX_DAILY_LOSS_USD", "50")),
+                    existing_sides       = [p.get("side","long") for p in bot_positions],
+                    df_1h                = df_1h_sc,
+                    df_1m                = df_1m_sc,
+                )
+                if not approved:
+                    _log(f"⛔ [SCORER] {sym} SHORT reddedildi — {sc_result.reject_reason} | skor:{sc_result.total}/16")
+                    continue
+            except Exception as _se:
+                _log(f"[SCORER] {sym} hata (devam ediliyor): {_se}", "warning")
+        # ── Scorer onayı sonu ────────────────────────────────────────────
                         continue
 
                     price = sig["long"]["entry"]
