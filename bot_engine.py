@@ -26,17 +26,16 @@ try:
     from coin_selector import score_coins, format_selection_log, TIER_1
     from risk_manager import get_risk_manager
     from entry_recycler import get_recycler
-   29    _ADVANCED_MODULES = True
-30  except ImportError as _ie:
-31      _ADVANCED_MODULES = False
-32      logging.getLogger("bot_engine").warning(...)
-33
-34  # ← Bu satır tamamen sola dayalı olmalı (indent yok)
-35  try:
-36      import entry_scorer as _scorer
-37      _SCORER_AVAILABLE = True
-38  except ImportError:
-39      _SCORER_AVAILABLE = False
+    _ADVANCED_MODULES = True
+except ImportError as _ie:
+    _ADVANCED_MODULES = False
+    logging.getLogger("bot_engine").warning(f"Gelişmiş modüller yüklenemedi: {_ie}")
+
+try:
+    import entry_scorer as _scorer
+    _SCORER_AVAILABLE = True
+except ImportError:
+    _SCORER_AVAILABLE = False
 
 # ── Config ────────────────────────────────────────────────────────────────────
 OKX_KEY        = os.getenv("OKX_API_KEY", "")
