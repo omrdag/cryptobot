@@ -5,11 +5,9 @@ mock_api.py tarafından arka plan thread olarak başlatılır.
 Her 60 saniyede bir coinleri tarar, sinyal üretir, OKX'e emir gönderir.
 
 GÜNCELLEME — Nisan 2026:
-  - RSI Filtresi eklendi: RSI > LONG_RSI_MAX iken long açılmaz
-    Railway Variables: LONG_RSI_MAX=72 (varsayılan)
-    Log: ⛔ [LONG RSI BLOKE] BTCUSDT — RSI:88.5 > 72
-  - Long log'una RSI değeri eklendi: 🟢 BTCUSDT LONG | RSI:65.2 | ...
-  - Girişteki RSI pozisyon kaydına eklendi (rsi_at_entry)
+  - RSI Filtresi: RSI > LONG_RSI_MAX iken long açılmaz (LONG_RSI_MAX=72)
+  - Entry Scorer: Çok zaman dilimli giriş kalitesi motoru (entry_scorer.py)
+  - Short geç kalma sorunu: RANGING+MIXED rejimlerinde short açılabilir
 """
 
 import os, time, hmac, hashlib, base64, json, threading, logging
@@ -37,6 +35,8 @@ try:
 except ImportError:
     _SCORER_AVAILABLE = False
 
+log = logging.getLogger("bot_engine")
+
 # ── Config ────────────────────────────────────────────────────────────────────
 OKX_KEY        = os.getenv("OKX_API_KEY", "")
 OKX_SECRET     = os.getenv("OKX_API_SECRET", "")
@@ -50,11 +50,7 @@ COIN_MAP = {c: c.replace("-USDT-SWAP", "USDT") for c in COINS}
 
 SLOT_NOTIONAL = float(os.getenv("SLOT_NOTIONAL", "1000"))
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "3"))
-
-# ── YENİ: RSI Aşırı Alım Filtresi ────────────────────────────────────────────
-# RSI bu değerin üzerindeyse long açılmaz — tepe alım koruması
-# Railway Variables'a LONG_RSI_MAX=72 ekle (varsayılan: 72)
-LONG_RSI_MAX = int(os.getenv("LONG_RSI_MAX", "72"))
+LONG_RSI_MAX  = int(os.getenv("LONG_RSI_MAX", "72"))
 
 _bot_opened_positions: set = set()
 
@@ -314,7 +310,7 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
     _log(f"✅ {side.upper()} {inst_id} {int(qty_contract)} kontrat | ordId={order_id}")
 
     if sl_price > 0:
-        sl_side  = "sell" if pos_side == "long" else "buy"
+        sl_side   = "sell" if pos_side == "long" else "buy"
         sl_result = _okx_post("/api/v5/trade/order-algo", {
             "instId": inst_id, "tdMode": "cross", "side": sl_side,
             "posSide": pos_side, "ordType": "conditional",
@@ -397,10 +393,7 @@ def close_position(inst_id: str, side: str, qty: float):
     return ok
 
 
-# ── RSI Hesaplama Yardımcısı ──────────────────────────────────────────────────
-
 def _calc_rsi(df: pd.DataFrame, period: int = 14) -> float:
-    """Son mum RSI'ını hesapla."""
     try:
         close = df["close"]
         delta = close.diff()
@@ -439,12 +432,12 @@ def run_signals(positions: list) -> dict:
                                         df_5m=None, df_15m=None, df_1h=df_1h)
         short_res = short_strat.generate(df, symbol=sym, hour_utc=hour_utc)
 
-        # ── RSI hesapla — emir gönderme filtresi için ─────────────────────────
         rsi_val = _calc_rsi(df)
 
         signals[sym] = {
             "inst_id":     inst_id,
             "rsi":         round(rsi_val, 1),
+            "df_1h":       df_1h,
             "long":  {
                 "score":  long_res.score,
                 "enter":  long_res.should_enter,
@@ -526,9 +519,8 @@ def check_exits(positions: list, signals: dict):
         coin_qty = qty * info["ct_val"]
         pnl_usdt = (price - entry) * coin_qty if side == "long" else (entry - price) * coin_qty
 
-        # Kâr basamakları
         if pnl_usdt >= PROFIT_FULL:
-            _log(f"💰 {sym} +${pnl_usdt:.2f} — {'TAM' if not half_closed else 'KALAN'} KAPANIŞ (${PROFIT_FULL}+)")
+            _log(f"💰 {sym} +${pnl_usdt:.2f} — {'TAM' if not half_closed else 'KALAN'} KAPANIŞ")
             close_position(inst_id, side, qty)
             if _ADVANCED_MODULES:
                 try: get_risk_manager().record_trade_result(pnl_usdt)
@@ -581,13 +573,12 @@ def check_exits(positions: list, signals: dict):
             price_diff   = protect_usdt / coin_qty_sl if coin_qty_sl > 0 else 0
             new_sl = (entry + price_diff) if side == "long" else (entry - price_diff)
             if (side == "long" and new_sl > sl) or (side == "short" and new_sl < sl):
-                _log(f"🔒 {sym} +${pnl_usdt:.2f} KAR KİLİTLEME: SL → ${new_sl:.4f} (${protect_usdt:.1f} USDT korunuyor)")
+                _log(f"🔒 {sym} +${pnl_usdt:.2f} KAR KİLİTLEME: SL → ${new_sl:.4f}")
                 with _lock:
                     d = engine_state["open_positions"].get(sym, {})
                     d.update({"stop_loss": new_sl, "profit_stage": 1})
                 sl = new_sl
 
-        # Trailing Stop — sadece +$3 sonrası
         if pnl_usdt >= PROFIT_LOCK_1:
             if side == "long" and price >= entry * (1 + TRAIL_ACTIVATION_PCT):
                 prev_high = float(pos_detail.get("trail_high", 0))
@@ -617,7 +608,6 @@ def check_exits(positions: list, signals: dict):
                     with _lock:
                         engine_state["open_positions"].get(sym, {})["trail_low"] = new_low
 
-        # SL / TP kontrolü
         should_close = False
         reason       = ""
         if side == "long":
@@ -714,8 +704,8 @@ def run_funding_arbitrage(open_positions: list, db=None, trade_ids: dict = None)
         except:
             continue
 
-        sl             = price * (1 - FUNDING_MAX_SL_PCT) if arb_pos == "long" else price * (1 + FUNDING_MAX_SL_PCT)
-        expected_gain  = round(FUNDING_NOTIONAL * abs(rate), 4)
+        sl            = price * (1 - FUNDING_MAX_SL_PCT) if arb_pos == "long" else price * (1 + FUNDING_MAX_SL_PCT)
+        expected_gain = round(FUNDING_NOTIONAL * abs(rate), 4)
         _log(f"[FUNDING ARB] {sym} {arb_pos.upper()} | Rate=%{rate_pct:.4f} | Beklenen=${expected_gain:.4f} | {mins_to_funding:.0f}dk kaldı")
 
         ok = place_order(inst_id, arb_side, FUNDING_NOTIONAL, price, sl_price=sl) if not PAPER_TRADING else True
@@ -729,7 +719,7 @@ def run_funding_arbitrage(open_positions: list, db=None, trade_ids: dict = None)
             _log(f"[FUNDING ARB] ✅ {sym} {arb_pos.upper()} açıldı")
 
 
-# ── Diğer sabitler ────────────────────────────────────────────────────────────
+# ── Sabitler ──────────────────────────────────────────────────────────────────
 
 PULLBACK_SHORT_ACTIVE = os.getenv("PULLBACK_SHORT_ACTIVE", "true").lower() == "true"
 LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "7"))
@@ -827,13 +817,13 @@ def setup_grid(inst_id: str, current_price: float) -> None:
         _log(f"[GRID] {inst_id} ATR hesaplanamadı", "warning")
         return
 
-    grid_range  = atr * GRID_ATR_MULT
-    lower       = current_price - grid_range / 2
-    upper       = current_price + grid_range / 2
-    step        = grid_range / GRID_LEVELS
-    info        = get_contract_info(inst_id)
-    qty_sz      = max(1, round((capital / GRID_LEVELS / current_price) / info["ct_val"]))
-    levels      = [round(lower + i * step, 2) for i in range(GRID_LEVELS)]
+    grid_range = atr * GRID_ATR_MULT
+    lower      = current_price - grid_range / 2
+    upper      = current_price + grid_range / 2
+    step       = grid_range / GRID_LEVELS
+    info       = get_contract_info(inst_id)
+    qty_sz     = max(1, round((capital / GRID_LEVELS / current_price) / info["ct_val"]))
+    levels     = [round(lower + i * step, 2) for i in range(GRID_LEVELS)]
 
     _log(f"[GRID] {inst_id} kurulum | ${lower:.2f}-${upper:.2f} | adım:${step:.2f} | ATR:${atr:.2f}")
 
@@ -960,7 +950,7 @@ def _check_balance_floor(balance: float, positions: list = None) -> bool:
 # ── Ana Döngü ─────────────────────────────────────────────────────────────────
 
 def bot_loop():
-    _log(f"Bot başlatıldı | Paper={PAPER_TRADING} | Kaldıraç={LEVERAGE}x | RSI_MAX={LONG_RSI_MAX}")
+    _log(f"Bot başlatıldı | Paper={PAPER_TRADING} | Kaldıraç={LEVERAGE}x | RSI_MAX={LONG_RSI_MAX} | Scorer={'aktif' if _SCORER_AVAILABLE else 'devre dışı'}")
 
     db = None
     try:
@@ -993,7 +983,6 @@ def bot_loop():
                 time.sleep(LOOP_SECONDS)
                 continue
 
-            # Rejim tespiti
             current_regime = "RANGE"
             regime_mult    = 1.0
             if _ADVANCED_MODULES:
@@ -1008,23 +997,22 @@ def bot_loop():
                         _log(f"📊 Rejim: {regime_summary(btc_regime)}")
                         with _lock:
                             engine_state["regime"] = {
-                                "name": btc_regime.regime,
-                                "confidence": btc_regime.confidence,
-                                "adx_1h": btc_regime.adx_1h,
-                                "adx_4h": btc_regime.adx_4h,
-                                "allow_long": btc_regime.allow_long,
+                                "name":        btc_regime.regime,
+                                "confidence":  btc_regime.confidence,
+                                "adx_1h":      btc_regime.adx_1h,
+                                "adx_4h":      btc_regime.adx_4h,
+                                "allow_long":  btc_regime.allow_long,
                                 "allow_short": btc_regime.allow_short,
-                                "pos_mult": btc_regime.position_size_mult,
-                                "reason": btc_regime.reason,
+                                "pos_mult":    btc_regime.position_size_mult,
+                                "reason":      btc_regime.reason,
                             }
                 except Exception as _re:
                     _log(f"[REGIME] Hata: {_re}", "warning")
 
-            # Risk Manager
             if _ADVANCED_MODULES:
                 try:
-                    rm         = get_risk_manager()
-                    daily_pnl  = engine_state.get("daily_pnl", 0.0)
+                    rm        = get_risk_manager()
+                    daily_pnl = engine_state.get("daily_pnl", 0.0)
                     rm.update_state(positions, balance, daily_pnl)
                     risk_state = rm.get_state_summary()
                     if risk_state["is_paused"]:
@@ -1034,19 +1022,16 @@ def bot_loop():
                 except Exception as _rme:
                     _log(f"[RISK] Hata: {_rme}", "warning")
 
-            # SL/TP kontrol
             signals_snap = engine_state.get("signals", {})
             if positions and signals_snap:
                 check_exits(positions, signals_snap)
                 positions = get_open_positions()
 
-            # Sinyal üret
             signals = run_signals(positions)
             with _lock:
                 engine_state["signals"]   = signals
                 engine_state["last_scan"] = datetime.now(timezone.utc).isoformat()
 
-            # Funding + Grid (her 5 döngüde)
             if loop_num == 1 or loop_num % 5 == 0:
                 try: run_funding_arbitrage(positions, db=db, trade_ids=_trade_ids)
                 except Exception as _fe: _log(f"[FUNDING] Hata: {_fe}", "warning")
@@ -1055,10 +1040,10 @@ def bot_loop():
                     with _lock:
                         engine_state["grid"] = {
                             sym: {
-                                "active": gs.get("active", False),
-                                "lower":  round(gs.get("lower", 0), 2),
-                                "upper":  round(gs.get("upper", 0), 2),
-                                "step":   round(gs.get("step",  0), 2),
+                                "active":       gs.get("active", False),
+                                "lower":        round(gs.get("lower", 0), 2),
+                                "upper":        round(gs.get("upper", 0), 2),
+                                "step":         round(gs.get("step",  0), 2),
                                 "filled_buys":  gs.get("filled_buys",  0),
                                 "filled_sells": gs.get("filled_sells", 0),
                                 "total_pnl":    round(gs.get("total_pnl", 0), 4),
@@ -1069,7 +1054,6 @@ def bot_loop():
                         }
                 except Exception as _ge: _log(f"[GRID] Hata: {_ge}", "warning")
 
-            # Emir gönder
             bot_positions = [p for p in positions if p["instId"] in _bot_opened_positions]
             open_count    = len(bot_positions)
             _log(f"[EMIR] bot_pos:{open_count} max:{MAX_POSITIONS} sinyaller:{len(signals)}")
@@ -1089,8 +1073,8 @@ def bot_loop():
                     continue
 
                 inst_id = sig["inst_id"]
+                df_1h   = sig.get("df_1h")
 
-                # Entry Recycler
                 if _ADVANCED_MODULES:
                     try:
                         recycler = get_recycler()
@@ -1104,7 +1088,6 @@ def bot_loop():
                             _log(f"⚡ {sym} re-entry boost: +{boost}")
                     except: pass
 
-                # Rejime göre dinamik eşik
                 effective_min = LONG_MIN_SCORE
                 if current_regime == "TREND_UP":
                     effective_min = max(6, LONG_MIN_SCORE - 2)
@@ -1114,68 +1097,45 @@ def bot_loop():
                 rsi_current = sig.get("rsi", 0)
 
                 # ── LONG SİNYALİ ─────────────────────────────────────────────
-               1117  if current_regime == "NO_TRADE":   ← if var
-1118      _log(...)
-1119                                      ← boş satır, sonra scorer kodu yok
-1120  # ── YENİ: Entry Scorer ──          ← yorum satırı if bloğunun içinde sayılıyor
+                if (sig["long"]["enter"] and sig["long"]["entry"]
+                        and sig["long"]["score"] >= effective_min
+                        and inst_id not in open_longs
+                        and inst_id not in open_shorts
                         and long_count < long_limit):
 
-                    # ✅ YENİ: RSI Aşırı Alım Filtresi
-                    # ── YENİ: Entry Scorer onayı ─────────────────────────────────────
-        if _SCORER_AVAILABLE:
-            try:
-                _scorer.clear_cache()
-                df_5m_sc  = _scorer.get_cached_df(inst_id, "5m", 60)
-                df_1m_sc  = _scorer.get_cached_df(inst_id, "1m", 35)
-                df_1h_sc  = df_1h
-                approved, sc_result = _scorer.approve(
-                    inst_id              = inst_id,
-                    side                 = "long",
-                    df_5m                = df_5m_sc,
-                    regime               = current_regime,
-                    open_positions_count = open_count,
-                    max_positions        = MAX_POSITIONS,
-                    daily_pnl            = engine_state.get("daily_pnl", 0.0),
-                    max_daily_loss       = float(os.getenv("MAX_DAILY_LOSS_USD", "50")),
-                    existing_sides       = [p.get("side","long") for p in bot_positions],
-                    df_1h                = df_1h_sc,
-                    df_1m                = df_1m_sc,
-                )
-                if not approved:
-                    _log(f"⛔ [SCORER] {sym} LONG reddedildi — {sc_result.reject_reason} | skor:{sc_result.total}/16")
-                    continue
-            except Exception as _se:
-                _log(f"[SCORER] {sym} hata (devam ediliyor): {_se}", "warning")
-        # ── Scorer onayı sonu ────────────────────────────────────────────
+                    # RSI aşırı alım filtresi
+                    if rsi_current > LONG_RSI_MAX and rsi_current > 0:
+                        _log(f"⛔ [LONG RSI BLOKE] {sym} — RSI:{rsi_current:.1f} > {LONG_RSI_MAX}")
+                        continue
 
                     if current_regime == "NO_TRADE":
                         _log(f"⛔ {sym} LONG — NO_TRADE rejimi")
-                      # ── YENİ: Entry Scorer onayı ─────────────────────────────────────
-        if _SCORER_AVAILABLE:
-            try:
-                df_5m_sc  = _scorer.get_cached_df(inst_id, "5m", 60)
-                df_1m_sc  = _scorer.get_cached_df(inst_id, "1m", 35)
-                df_1h_sc  = df_1h
-                approved, sc_result = _scorer.approve(
-                    inst_id              = inst_id,
-                    side                 = "short",
-                    df_5m                = df_5m_sc,
-                    regime               = current_regime,
-                    open_positions_count = open_count,
-                    max_positions        = MAX_POSITIONS,
-                    daily_pnl            = engine_state.get("daily_pnl", 0.0),
-                    max_daily_loss       = float(os.getenv("MAX_DAILY_LOSS_USD", "50")),
-                    existing_sides       = [p.get("side","long") for p in bot_positions],
-                    df_1h                = df_1h_sc,
-                    df_1m                = df_1m_sc,
-                )
-                if not approved:
-                    _log(f"⛔ [SCORER] {sym} SHORT reddedildi — {sc_result.reject_reason} | skor:{sc_result.total}/16")
-                    continue
-            except Exception as _se:
-                _log(f"[SCORER] {sym} hata (devam ediliyor): {_se}", "warning")
-        # ── Scorer onayı sonu ────────────────────────────────────────────
                         continue
+
+                    # Entry Scorer onayı
+                    if _SCORER_AVAILABLE:
+                        try:
+                            _scorer.clear_cache()
+                            df_5m_sc = _scorer.get_cached_df(inst_id, "5m", 60)
+                            df_1m_sc = _scorer.get_cached_df(inst_id, "1m", 35)
+                            approved, sc_result = _scorer.approve(
+                                inst_id              = inst_id,
+                                side                 = "long",
+                                df_5m                = df_5m_sc,
+                                regime               = current_regime,
+                                open_positions_count = open_count,
+                                max_positions        = MAX_POSITIONS,
+                                daily_pnl            = engine_state.get("daily_pnl", 0.0),
+                                max_daily_loss       = float(os.getenv("MAX_DAILY_LOSS_USD", "50")),
+                                existing_sides       = [p.get("side", "long") for p in bot_positions],
+                                df_1h                = df_1h,
+                                df_1m                = df_1m_sc,
+                            )
+                            if not approved:
+                                _log(f"⛔ [SCORER] {sym} LONG reddedildi — {sc_result.reject_reason} | skor:{sc_result.total}/16")
+                                continue
+                        except Exception as _se:
+                            _log(f"[SCORER] {sym} hata (devam ediliyor): {_se}", "warning")
 
                     price = sig["long"]["entry"]
                     sl    = sig["long"]["sl"] or price * (1 - 0.012)
@@ -1202,7 +1162,6 @@ def bot_loop():
                         except Exception as _rme:
                             _log(f"[RISK] Hata: {_rme}", "warning")
 
-                    # RSI log'a eklendi
                     _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/11 | RSI:{rsi_current:.1f} | Rejim:{current_regime} | Slot:{long_count+1}/{long_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f}(0.5R) TP2:${tp2:.4f}(1R)")
                     ok = place_order(inst_id, "buy", notional_to_use, price,
                                      sl_price=sl, tp1_price=tp1, tp2_price=tp2)
@@ -1210,12 +1169,15 @@ def bot_loop():
                         _bot_opened_positions.add(inst_id)
                         with _lock:
                             engine_state["open_positions"][sym] = {
-                                "symbol": sym, "side": "long",
-                                "entry_price": price, "stop_loss": sl,
-                                "take_profit": tp, "notional": notional_to_use,
-                                "opened_at": datetime.now(timezone.utc).isoformat(),
-                                "score": sig["long"]["score"],
-                                "rsi_at_entry": rsi_current,  # ✅ Girişteki RSI kaydedildi
+                                "symbol":        sym,
+                                "side":          "long",
+                                "entry_price":   price,
+                                "stop_loss":     sl,
+                                "take_profit":   tp,
+                                "notional":      notional_to_use,
+                                "opened_at":     datetime.now(timezone.utc).isoformat(),
+                                "score":         sig["long"]["score"],
+                                "rsi_at_entry":  rsi_current,
                             }
                         open_count += 1
                         long_count += 1
@@ -1240,6 +1202,30 @@ def bot_loop():
                     if current_regime == "NO_TRADE":
                         _log(f"⛔ {sym} SHORT — NO_TRADE rejimi")
                         continue
+
+                    # Entry Scorer onayı
+                    if _SCORER_AVAILABLE:
+                        try:
+                            df_5m_sc = _scorer.get_cached_df(inst_id, "5m", 60)
+                            df_1m_sc = _scorer.get_cached_df(inst_id, "1m", 35)
+                            approved, sc_result = _scorer.approve(
+                                inst_id              = inst_id,
+                                side                 = "short",
+                                df_5m                = df_5m_sc,
+                                regime               = current_regime,
+                                open_positions_count = open_count,
+                                max_positions        = MAX_POSITIONS,
+                                daily_pnl            = engine_state.get("daily_pnl", 0.0),
+                                max_daily_loss       = float(os.getenv("MAX_DAILY_LOSS_USD", "50")),
+                                existing_sides       = [p.get("side", "long") for p in bot_positions],
+                                df_1h                = df_1h,
+                                df_1m                = df_1m_sc,
+                            )
+                            if not approved:
+                                _log(f"⛔ [SCORER] {sym} SHORT reddedildi — {sc_result.reject_reason} | skor:{sc_result.total}/16")
+                                continue
+                        except Exception as _se:
+                            _log(f"[SCORER] {sym} hata (devam ediliyor): {_se}", "warning")
 
                     price = sig["short"]["entry"]
                     sl    = sig["short"]["sl"] or price * (1 + 0.012)
@@ -1272,11 +1258,14 @@ def bot_loop():
                     if ok:
                         with _lock:
                             engine_state["open_positions"][sym] = {
-                                "symbol": sym, "side": "short",
-                                "entry_price": price, "stop_loss": sl,
-                                "take_profit": tp, "notional": SLOT_NOTIONAL,
-                                "opened_at": datetime.now(timezone.utc).isoformat(),
-                                "score": sig["short"]["score"],
+                                "symbol":      sym,
+                                "side":        "short",
+                                "entry_price": price,
+                                "stop_loss":   sl,
+                                "take_profit": tp,
+                                "notional":    SLOT_NOTIONAL,
+                                "opened_at":   datetime.now(timezone.utc).isoformat(),
+                                "score":       sig["short"]["score"],
                             }
                         open_count  += 1
                         short_count += 1
@@ -1287,7 +1276,6 @@ def bot_loop():
                                                 "paper" if PAPER_TRADING else "live")
                             if tid: _trade_ids[sym] = tid
 
-            # Entry Recycler
             if _ADVANCED_MODULES:
                 try:
                     recycler    = get_recycler()
@@ -1296,13 +1284,13 @@ def bot_loop():
                         sym = item.trade.symbol
                         _log(f"♻️ {sym} rescan — cooldown bitti")
                         item.mark_attempted()
-                        sig       = signals.get(sym, {})
-                        b_long    = sig.get("long",  {}).get("score", 0) + item.score_boost
-                        b_short   = sig.get("short", {}).get("score", 0) + item.score_boost
+                        sig     = signals.get(sym, {})
+                        b_long  = sig.get("long",  {}).get("score", 0) + item.score_boost
+                        b_short = sig.get("short", {}).get("score", 0) + item.score_boost
                         if b_long  >= effective_min and sig.get("long",  {}).get("enter"):
-                            _log(f"♻️ {sym} re-entry LONG uygun ({b_long}) — sonraki döngüde")
+                            _log(f"♻️ {sym} re-entry LONG uygun ({b_long})")
                         elif b_short >= effective_min and sig.get("short", {}).get("enter"):
-                            _log(f"♻️ {sym} re-entry SHORT uygun ({b_short}) — sonraki döngüde")
+                            _log(f"♻️ {sym} re-entry SHORT uygun ({b_short})")
                         else:
                             _log(f"♻️ {sym} skor yetersiz")
                             recycler.mark_re_entered(sym, success=False)
