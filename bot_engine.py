@@ -1114,10 +1114,10 @@ def bot_loop():
                 rsi_current = sig.get("rsi", 0)
 
                 # ── LONG SİNYALİ ─────────────────────────────────────────────
-                if (sig["long"]["enter"] and sig["long"]["entry"]
-                        and sig["long"]["score"] >= effective_min
-                        and inst_id not in open_longs
-                        and inst_id not in open_shorts
+               1117  if current_regime == "NO_TRADE":   ← if var
+1118      _log(...)
+1119                                      ← boş satır, sonra scorer kodu yok
+1120  # ── YENİ: Entry Scorer ──          ← yorum satırı if bloğunun içinde sayılıyor
                         and long_count < long_limit):
 
                     # ✅ YENİ: RSI Aşırı Alım Filtresi
