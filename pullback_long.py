@@ -346,40 +346,42 @@ class PullbackLongStrategy:
 
         # ── Gate 1: Supertrend bullish ────────────────────────────────────────
         st_bullish, st_level = self._gate_supertrend_bullish(df)
-        if not st_bullish:
-            result.reason = (
-                f"✗ Gate1 ST bearish: fiyat={close:.4f} ST={st_level:.4f}"
-            )
-            result.indicators = {"supertrend": st_level, "supertrend_bullish": False}
-            return result
-
-        # ── Gate 2: 4H trend — uyarı verir ama engellemez ──────────────────
         trend_4h_ok = self._gate_4h_trend(df_4h)
-        if not trend_4h_ok:
-            # Engellemek yerine -1 skor penaltısı uygula
-            pass  # gate geçilmedi ama devam et — skor bonusları düşük kalır
-
-        # ── Gate 3: Volume ────────────────────────────────────────────────────
         vol_ok = self._gate_volume(df)
-        vol_ma = float(df["volume"].rolling(20).mean().iloc[-1]) if len(df) >= 20 else 0
+        vol_ma  = float(df["volume"].rolling(20).mean().iloc[-1]) if len(df) >= 20 else 1
         vol_now = float(df["volume"].iloc[-1])
-        if not vol_ok:
-            result.reason = (
-                f"✗ Gate3: Hacim çok zayıf ({vol_now:.0f} < MA20×0.8={vol_ma*0.8:.0f})"
-            )
+
+        # Tek zorunlu kural: vol çok düşükse geç (0.5x altı)
+        if vol_now < vol_ma * 0.5:
+            result.reason = f"✗ Gate: Hacim çok düşük ({vol_now:.0f} < MA×0.5={vol_ma*0.5:.0f})"
             return result
 
         result.gate_passed = True
 
-        # ── Bonus Puanlar ─────────────────────────────────────────────────────
+        # ── Bonus Puanlar (gates artık puan kaynağı) ─────────────────────────
         score = 0
         reasons = []
-        # 4H trend bonusu (gate 2 geçilirse +1)
+
+        # Supertrend 5m → +2 puan (bonus, engel değil)
+        if st_bullish:
+            score += 2
+            reasons.append("✓ ST5m↑")
+        else:
+            reasons.append("✗ ST5m↓")
+
+        # 4H trend → +1 puan
         if trend_4h_ok:
             score += 1
-            reasons.append("✓ 4H trend↑")
+            reasons.append("✓ 4H↑")
         else:
-            reasons.append("✗ 4H trend↓")
+            reasons.append("✗ 4H↓")
+
+        # Volume normal → +1 puan
+        if vol_ok:
+            score += 1
+            reasons.append("✓ VOL")
+        else:
+            reasons.append("✗ VOL")
 
         s_flip = self._score_supertrend_flip(df)
         score += s_flip
