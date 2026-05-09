@@ -474,7 +474,7 @@ def run_signals(positions: list) -> dict:
         except Exception:
             df_1h = None
         hour_utc = datetime.now(timezone.utc).hour
-
+        
         try:
             long_res  = long_strat.generate(df, symbol=sym, hour_utc=hour_utc,
                                             df_5m=None, df_15m=None, df_1h=df_1h)
@@ -488,31 +488,36 @@ def run_signals(positions: list) -> dict:
             _log(f"[SIGNALS] {sym} short hata: {_se}", "warning")
             from pullback_long import SignalResult as _SR; short_res = _SR()
 
-        rsi_val = _calc_rsi(df)
-        signals[sym] = {
-            "inst_id":     inst_id,
-            "rsi":         round(rsi_val, 1),
-            "df_1h":       None,
-            "long":  {
-                "score":  long_res.score,
-                "enter":  long_res.should_enter,
-                "sl":     long_res.stop_loss,
-                "tp":     long_res.take_profit,
-                "entry":  long_res.entry_price,
-                "reason": long_res.reason[:100],
-                "rsi":    round(rsi_val, 1),
-            },
-            "short": {
-                "score":  short_res.score,
-                "enter":  short_res.should_enter,
-                "sl":     short_res.stop_loss,
-                "tp":     short_res.take_profit,
-                "entry":  short_res.entry_price,
-                "reason": short_res.reason[:100],
-            },
-            "in_position": inst_id in open_syms,
-            "timestamp":   datetime.now(timezone.utc).isoformat(),
-        }
+        try:
+            rsi_val = _calc_rsi(df)
+            signals[sym] = {
+                "inst_id":     inst_id,
+                "rsi":         round(float(rsi_val), 1),
+                "df_1h":       None,
+                "long":  {
+                    "score":  int(long_res.score),
+                    "enter":  bool(long_res.should_enter),
+                    "sl":     float(long_res.stop_loss or 0),
+                    "tp":     float(long_res.take_profit or 0),
+                    "entry":  float(long_res.entry_price or 0),
+                    "reason": str(long_res.reason or "")[:100],
+                    "rsi":    round(float(rsi_val), 1),
+                },
+                "short": {
+                    "score":  int(short_res.score),
+                    "enter":  bool(short_res.should_enter),
+                    "sl":     float(short_res.stop_loss or 0),
+                    "tp":     float(short_res.take_profit or 0),
+                    "entry":  float(short_res.entry_price or 0),
+                    "reason": str(short_res.reason or "")[:100],
+                },
+                "in_position": inst_id in open_syms,
+                "timestamp":   datetime.now(timezone.utc).isoformat(),
+            }
+            _log(f"[SIGNALS] {sym} → L:{long_res.score} enter={long_res.should_enter} entry={long_res.entry_price:.4f}")
+        except Exception as _sig_err:
+            _log(f"[SIGNALS] ❌ {sym} HATA: {_sig_err}", "warning")
+            import traceback; _log(traceback.format_exc()[:300], "warning")
 
         if long_res.should_enter:
             status = f"BUY ({long_res.score}/11)"
