@@ -15,6 +15,15 @@ from typing import List, Dict, Optional
 import pandas as pd
 
 log = logging.getLogger("dynamic_scanner")
+logging.basicConfig(level=logging.INFO)
+
+# Railway'de görünmesi için print-based log
+def _slog(msg: str):
+    """Scanner log — Railway stdout'a yazar."""
+    from datetime import datetime, timezone
+    ts = datetime.now(timezone.utc).strftime("%H:%M:%S")
+    print(f"cryptobot: [{ts}] {msg}", flush=True)
+    log.info(msg)
 
 # ── Sabitler ──────────────────────────────────────────────────────────────────
 # Bu coinler her zaman taranır (likit, güvenilir)
@@ -46,7 +55,7 @@ def _fetch(url: str, timeout: int = 5) -> dict:
         with urllib.request.urlopen(req, timeout=timeout) as r:
             return json.loads(r.read())
     except Exception as e:
-        log.warning(f"[SCANNER] fetch hatası {url[:60]}: {e}")
+        _slog(f"[SCANNER] ⚠️ fetch hatası: {e}")
         return {}
 
 
@@ -238,7 +247,7 @@ def get_best_coins(top_n: int = TOP_N, min_score: int = 4) -> List[str]:
 
     # Top coinleri hacme göre al
     candidates = get_top_coins_by_volume(limit=20)
-    log.info(f"[SCANNER] {len(candidates)} aday coin taranacak")
+    _slog(f"[SCANNER] {len(candidates)} aday coin taranıyor...")
 
     # Her birini puanla
     scored = []
@@ -246,10 +255,10 @@ def get_best_coins(top_n: int = TOP_N, min_score: int = 4) -> List[str]:
         try:
             result = score_coin(inst_id)
             scored.append(result)
-            log.info(f"[SCANNER] {inst_id}: {result['score']}/{result['max']} — {result['reason']}")
+            _slog(f"[SCANNER] {inst_id.replace('-USDT-SWAP','')}: {result['score']}/{result['max']} — {result['reason']}")
             time.sleep(0.1)  # rate limit
         except Exception as e:
-            log.warning(f"[SCANNER] {inst_id} hata: {e}")
+            _slog(f"[SCANNER] ⚠️ {inst_id} hata: {e}")
 
     # Min skor filtresi + sırala
     qualified = [s for s in scored if s["score"] >= min_score]
@@ -260,11 +269,11 @@ def get_best_coins(top_n: int = TOP_N, min_score: int = 4) -> List[str]:
 
     # Hiç qualify olmadıysa fallback
     if not best:
-        log.warning("[SCANNER] Qualify olan coin yok, BTC+SOL fallback")
+        _slog("[SCANNER] ⚠️ Qualify olan coin yok → BTC+SOL fallback")
         best = ["BTC-USDT-SWAP", "SOL-USDT-SWAP"]
 
-    log.info(f"[SCANNER] Seçilen coinler: {best}")
-    log.info(f"[SCANNER] Top 5: {[(s['inst_id'], s['score']) for s in qualified[:5]]}")
+    _slog(f"[SCANNER] ✅ Seçilen coinler: {[c.replace('-USDT-SWAP','') for c in best]}")
+    _slog(f"[SCANNER] 🏆 Top 5: {[(s['inst_id'].replace('-USDT-SWAP',''), s['score']) for s in qualified[:5]]}")
 
     # Cache güncelle
     _cache["coins"] = best
