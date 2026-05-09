@@ -67,6 +67,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
 .ic-sol{background:rgba(170,85,255,.15);color:var(--purple)}
 .ic-ondo{background:rgba(0,136,255,.15);color:var(--blue)}
 .ic-pump{background:rgba(0,255,136,.15);color:var(--green)}
+.ic-hype{background:rgba(255,102,0,.15);color:#ff6600}
 .ic-def{background:rgba(136,153,187,.15);color:var(--text2)}
 .pc-sym{font-size:14px;font-weight:700}.pc-meta{font-size:9px;color:var(--text3);margin-top:2px}
 .pc-dir{font-size:9px;font-weight:700;padding:3px 8px;border-radius:3px;letter-spacing:1px}
@@ -263,7 +264,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
         <div class="fund-row"><span class="fc">BNB</span><span id="fr-bnb" style="color:var(--text2)">--</span></div>
         <div class="fund-row"><span class="fc">SOL</span><span id="fr-sol" style="color:var(--text2)">--</span></div>
         <div class="fund-row"><span class="fc">ONDO</span><span id="fr-ondo" style="color:var(--text2)">--</span></div>
-        <div class="fund-row"><span class="fc">PUMP</span><span id="fr-pump" style="color:var(--text2)">--</span></div>
+        <div class="fund-row"><span class="fc">HYPE</span><span id="fr-hype" style="color:var(--text2)">--</span></div>
       </div>
     </div>
     <div class="rp-sec">
@@ -361,8 +362,8 @@ function goPage(p){
 }
 
 /* ── COIN STRIP ── */
-const COINS=['BTCUSDT','BNBUSDT','SOLUSDT','ONDOUSDT','PUMPUSDT'];
-const LBL={BTCUSDT:'BTC',BNBUSDT:'BNB',SOLUSDT:'SOL',ONDOUSDT:'ONDO',PUMPUSDT:'PUMP'};
+const COINS=['BTCUSDT','BNBUSDT','SOLUSDT','ONDOUSDT','HYPEUSDT'];
+const LBL={BTCUSDT:'BTC',BNBUSDT:'BNB',SOLUSDT:'SOL',ONDOUSDT:'ONDO',HYPEUSDT:'HYPE'};
 document.getElementById('coin-strip').innerHTML=COINS.map(s=>
   `<div class="coin-row" id="cr-${s}">
     <div><div class="cn">${LBL[s]}</div><div class="cs">USDT PERP</div></div>
@@ -386,7 +387,7 @@ function connectWS(){
     const ws=new WebSocket('wss://ws.okx.com:8443/ws/v5/public');
     ws.onopen=()=>{
       ws.send(JSON.stringify({op:'subscribe',args:COINS.map(s=>({channel:'tickers',instId:s.replace('USDT','-USDT-SWAP')}))}));
-      ws.send(JSON.stringify({op:'subscribe',args:['BTC','BNB','SOL','ONDO','PUMP'].map(s=>({channel:'funding-rate',instId:s+'-USDT-SWAP'}))}));
+      ws.send(JSON.stringify({op:'subscribe',args:['BTC','BNB','SOL','ONDO','HYPE'].map(s=>({channel:'funding-rate',instId:s+'-USDT-SWAP'}))}));
     };
     ws.onmessage=e=>{
       try{
@@ -463,7 +464,7 @@ function icn(sym){
   if(s.includes('BNB'))return 'ic-bnb';
   if(s.includes('SOL'))return 'ic-sol';
   if(s.includes('ONDO'))return 'ic-ondo';
-  if(s.includes('PUMP'))return 'ic-pump';
+  if(s.includes('HYPE'))return 'ic-hype';
   return 'ic-def';
 }
 
@@ -749,7 +750,7 @@ function fmtP(p,sym){
   if(s.includes('BTC'))  return '$'+n.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
   if(s.includes('BNB')||s.includes('SOL')) return '$'+n.toFixed(2);
   if(s.includes('ONDO')) return '$'+n.toFixed(4);
-  if(s.includes('PUMP')) return '$'+n.toFixed(6);
+  if(s.includes('HYPE')) return '$'+n.toFixed(3);
   if(n<0.001) return '$'+n.toFixed(8);
   if(n<1)     return '$'+n.toFixed(6);
   if(n<100)   return '$'+n.toFixed(4);
