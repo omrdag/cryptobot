@@ -761,7 +761,7 @@ def run_funding_arbitrage(open_positions: list, db=None, trade_ids: dict = None)
 # ── Sabitler ──────────────────────────────────────────────────────────────────
 
 PULLBACK_SHORT_ACTIVE = os.getenv("PULLBACK_SHORT_ACTIVE", "true").lower() == "true"
-LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "7"))
+LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "6"))
 TP1_R_MULT            = float(os.getenv("TP1_R_MULT", "0.5"))
 TP2_R_MULT            = float(os.getenv("TP2_R_MULT", "1.0"))
 
