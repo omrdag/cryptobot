@@ -475,12 +475,20 @@ def run_signals(positions: list) -> dict:
             df_1h = None
         hour_utc = datetime.now(timezone.utc).hour
 
-        long_res  = long_strat.generate(df, symbol=sym, hour_utc=hour_utc,
-                                        df_5m=None, df_15m=None, df_1h=df_1h)
-        short_res = short_strat.generate(df, symbol=sym, hour_utc=hour_utc)
+        try:
+            long_res  = long_strat.generate(df, symbol=sym, hour_utc=hour_utc,
+                                            df_5m=None, df_15m=None, df_1h=df_1h)
+        except Exception as _le:
+            _log(f"[SIGNALS] {sym} long hata: {_le}", "warning")
+            from pullback_long import SignalResult as _SR; long_res = _SR()
+
+        try:
+            short_res = short_strat.generate(df, symbol=sym, hour_utc=hour_utc)
+        except Exception as _se:
+            _log(f"[SIGNALS] {sym} short hata: {_se}", "warning")
+            from pullback_long import SignalResult as _SR; short_res = _SR()
 
         rsi_val = _calc_rsi(df)
-
         signals[sym] = {
             "inst_id":     inst_id,
             "rsi":         round(rsi_val, 1),
@@ -1162,7 +1170,9 @@ def bot_loop():
             long_count  = len(open_longs)
             short_count = len(open_shorts)
 
+            _log(f"[EMIR] Sinyal sayısı: {len(signals)} | Açık pos: {open_count}/{MAX_POSITIONS} | Long:{long_count}/{long_limit}")
             for sym, sig in signals.items():
+                _log(f"[EMIR-CHK] {sym} | enter={sig.get('long',{}).get('enter')} score={sig.get('long',{}).get('score')} entry={sig.get('long',{}).get('entry',0):.4f}")
                 if open_count >= MAX_POSITIONS:
                     _log(f"⛔ Max pozisyon doldu ({open_count}/{MAX_POSITIONS})")
                     break
