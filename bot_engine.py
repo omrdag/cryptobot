@@ -18,6 +18,13 @@ from typing import Dict, Optional
 import pandas as pd
 
 try:
+    from dynamic_scanner import get_best_coins, get_scanner_scores
+    _DYNAMIC_SCAN = True
+except ImportError as _dse:
+    _DYNAMIC_SCAN = False
+    logging.getLogger("bot_engine").warning(f"Dynamic scanner yüklenemedi: {_dse}")
+
+try:
     from regime_engine import (
         detect_regime, get_btc_regime, coin_regime_modifier,
         regime_summary, RegimeResult
@@ -43,21 +50,41 @@ OKX_KEY        = os.getenv("OKX_API_KEY", "")
 OKX_SECRET     = os.getenv("OKX_API_SECRET", "")
 OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE", "")
 PAPER_TRADING  = os.getenv("PAPER_TRADING", "true").lower() != "false"
-LEVERAGE       = int(os.getenv("LEVERAGE", "10"))
+LEVERAGE       = int(os.getenv("LEVERAGE", "15"))
 LOOP_SECONDS   = int(os.getenv("LOOP_SECONDS", "60"))
 
-# ── Coin Listesi — BTC + SOL (odaklı, likit) ───────────────────────────────
-COINS = [
+# ── Coin Listesi — Dinamik (dynamic_scanner) veya fallback ──────────────────
+COINS_FALLBACK = [
     "BTC-USDT-SWAP",
     "SOL-USDT-SWAP",
 ]
-COIN_MAP = {
-    "BTC-USDT-SWAP": "BTCUSDT",
-    "SOL-USDT-SWAP": "SOLUSDT",
-}
+# COIN_MAP: tüm bilinen coinler — scanner yeni coin seçerse buraya eklenir
+COIN_MAP: dict = {}
 
-SLOT_NOTIONAL = float(os.getenv("SLOT_NOTIONAL", "500"))
-MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))
+def _build_coin_map(coins: list) -> dict:
+    """inst_id → sembol mapping oluştur."""
+    return {c: c.replace("-USDT-SWAP", "USDT").replace("-", "") for c in coins}
+
+# Başlangıç haritası
+COIN_MAP.update(_build_coin_map(COINS_FALLBACK))
+
+def get_active_coins() -> list:
+    """Her döngüde çağrılır — dinamik veya fallback."""
+    if _DYNAMIC_SCAN:
+        try:
+            best = get_best_coins(top_n=2, min_score=4)
+            # COIN_MAP'i güncelle
+            COIN_MAP.update(_build_coin_map(best))
+            return best
+        except Exception as _ge:
+            logging.getLogger("bot_engine").warning(f"[SCANNER] hata: {_ge}")
+    return COINS_FALLBACK
+
+# Başlangıç için statik — ilk döngüde dinamik hale gelir
+COINS = COINS_FALLBACK
+
+SLOT_NOTIONAL = float(os.getenv("SLOT_NOTIONAL", "300"))
+MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "2"))
 LONG_RSI_MAX  = int(os.getenv("LONG_RSI_MAX", "72"))
 
 _bot_opened_positions: set = set()
@@ -86,6 +113,8 @@ engine_state: Dict = {
     "regime":            {},
     "risk_state":        {},
     "daily_pnl":         0.0,
+    "active_coins":      [],
+    "scanner_scores":    {},
 }
 _lock = threading.Lock()
 
@@ -232,7 +261,7 @@ def get_open_positions() -> list:
             with _lock:
                 if state_key not in engine_state["open_positions"] and entry > 0:
                     try:
-                        sl_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
+                        sl_mult = float(os.getenv("SL_ATR_MULT", "2.0"))
                         sl_pct  = 0.015 * sl_mult
                         if side == "long":
                             sl = entry * (1 - sl_pct)
@@ -331,8 +360,8 @@ def place_order(inst_id: str, side: str, notional: float, price: float,
         else:
             _log(f"⚠️ SL ayarlanamadı: {sl_result.get('msg','?')}", "warning")
 
-    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.003"))
-    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.002"))
+    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.004"))
+    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.0025"))
     trail_active_px = price * (1 + TRAIL_ACTIVATION_PCT) if pos_side == "long" else price * (1 - TRAIL_ACTIVATION_PCT)
     trail_side      = "sell" if pos_side == "long" else "buy"
 
@@ -425,8 +454,9 @@ def run_signals(positions: list) -> dict:
     open_syms = {p["instId"] for p in positions if p["instId"] in _bot_opened_positions}
     signals   = {}
 
-    for inst_id in COINS:
-        sym = COIN_MAP[inst_id]
+    active_coins = get_active_coins()
+    for inst_id in active_coins:
+        sym = COIN_MAP.get(inst_id, inst_id.replace("-USDT-SWAP","USDT"))
 
         df = fetch_ohlcv(inst_id, bar="5m", limit=100)
         if df is None or len(df) < 55:
@@ -479,12 +509,12 @@ def run_signals(positions: list) -> dict:
 
 
 def check_exits(positions: list, signals: dict):
-    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.003"))
-    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.002"))
-    PROFIT_LOCK_1        = float(os.getenv("PROFIT_LOCK_1",  "3.0"))
-    PROFIT_LOCK_2        = float(os.getenv("PROFIT_LOCK_2",  "5.0"))
-    PROFIT_HALF          = float(os.getenv("PROFIT_HALF",    "7.0"))
-    PROFIT_FULL          = float(os.getenv("PROFIT_FULL",   "10.0"))
+    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.004"))
+    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.0025"))
+    PROFIT_LOCK_1        = float(os.getenv("PROFIT_LOCK_1",  "5.0"))
+    PROFIT_LOCK_2        = float(os.getenv("PROFIT_LOCK_2",  "8.0"))
+    PROFIT_HALF          = float(os.getenv("PROFIT_HALF",   "12.0"))
+    PROFIT_FULL          = float(os.getenv("PROFIT_FULL",   "20.0"))
 
     for pos in positions:
         inst_id = pos["instId"]
@@ -514,7 +544,7 @@ def check_exits(positions: list, signals: dict):
         profit_stage = pos_detail.get("profit_stage", 0)
 
         if sl <= 0 and entry > 0:
-            sl_mult = float(os.getenv("SL_ATR_MULT", "1.5"))
+            sl_mult = float(os.getenv("SL_ATR_MULT", "2.0"))
             sl_pct  = 0.015 * sl_mult
             sl = entry * (1 - sl_pct) if side == "long" else entry * (1 + sl_pct)
             tp = (entry * (1 + sl_pct * 2) if side == "long" else entry * (1 - sl_pct * 2)) if tp <= 0 else tp
@@ -730,7 +760,7 @@ def run_funding_arbitrage(open_positions: list, db=None, trade_ids: dict = None)
 # ── Sabitler ──────────────────────────────────────────────────────────────────
 
 PULLBACK_SHORT_ACTIVE = os.getenv("PULLBACK_SHORT_ACTIVE", "true").lower() == "true"
-LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "7"))
+LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "8"))
 TP1_R_MULT            = float(os.getenv("TP1_R_MULT", "0.5"))
 TP2_R_MULT            = float(os.getenv("TP2_R_MULT", "1.0"))
 
@@ -742,7 +772,7 @@ def _is_good_trading_hour() -> bool:
 # ── Grid Trading ──────────────────────────────────────────────────────────────
 # Grid sadece BTC üzerinden çalışır (en likit)
 GRID_COINS         = ["BTC-USDT-SWAP"]
-GRID_TOTAL_CAPITAL = float(os.getenv("GRID_CAPITAL",  "500"))
+GRID_TOTAL_CAPITAL = float(os.getenv("GRID_CAPITAL",  "200"))
 GRID_LEVELS        = int(os.getenv("GRID_LEVELS",     "8"))
 GRID_LEVERAGE      = int(os.getenv("GRID_LEVERAGE",   "3"))
 GRID_ATR_MULT      = float(os.getenv("GRID_ATR_MULT", "3.0"))
@@ -959,7 +989,8 @@ def _check_balance_floor(balance: float, positions: list = None) -> bool:
 
 def bot_loop():
     _log(f"Bot başlatıldı | Paper={PAPER_TRADING} | Kaldıraç={LEVERAGE}x | RSI_MAX={LONG_RSI_MAX} | Scorer={'aktif' if _SCORER_AVAILABLE else 'devre dışı'}")
-    _log(f"Coinler: {', '.join(COINS)}")
+    _log(f"Mod: {'Dinamik coin seçimi' if _DYNAMIC_SCAN else 'Sabit coin listesi'}")
+    _log(f"Fallback coinler: {', '.join(COINS_FALLBACK)}")
 
     db = None
     try:
@@ -971,7 +1002,8 @@ def bot_loop():
         _log(f"DB başlatılamadı: {e}", "warning")
 
     _trade_ids: Dict[str, int] = {}
-    for inst_id in COINS:
+    # Başlangıçta fallback coinlere kaldıraç ayarla
+    for inst_id in COINS_FALLBACK:
         set_leverage(inst_id, LEVERAGE)
 
     while True:
@@ -1073,6 +1105,15 @@ def bot_loop():
             with _lock:
                 engine_state["signals"]   = safe_sigs
                 engine_state["last_scan"] = datetime.now(timezone.utc).isoformat()
+                engine_state["active_coins"] = list(safe_sigs.keys())
+                if _DYNAMIC_SCAN:
+                    try:
+                        sc = get_scanner_scores()
+                        engine_state["scanner_scores"] = {
+                            k: {"score": v.get("score",0), "reason": v.get("reason",""), "rsi": v.get("rsi",0)}
+                            for k,v in sc.items()
+                        }
+                    except: pass
 
             if loop_num == 1 or loop_num % 5 == 0:
                 try: run_funding_arbitrage(positions, db=db, trade_ids=_trade_ids)
