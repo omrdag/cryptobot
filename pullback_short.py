@@ -28,7 +28,8 @@ class PullbackShortStrategy:
 
         result = SignalResult()
 
-        if not int(os.getenv("PULLBACK_SHORT_ACTIVE", "0")):
+        val = os.getenv("PULLBACK_SHORT_ACTIVE", "false").lower()
+        if val in ("false", "0", "no", ""):
             result.reason = "Short devre dışı"
             return result
 
