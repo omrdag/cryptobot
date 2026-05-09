@@ -50,7 +50,7 @@ OKX_KEY        = os.getenv("OKX_API_KEY", "")
 OKX_SECRET     = os.getenv("OKX_API_SECRET", "")
 OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE", "")
 PAPER_TRADING  = os.getenv("PAPER_TRADING", "true").lower() != "false"
-LEVERAGE       = int(os.getenv("LEVERAGE", "15"))
+LEVERAGE       = int(os.getenv("LEVERAGE", "12"))
 LOOP_SECONDS   = int(os.getenv("LOOP_SECONDS", "60"))
 
 # ── Coin Listesi — Dinamik (dynamic_scanner) veya fallback ──────────────────
@@ -83,7 +83,7 @@ def get_active_coins() -> list:
 # Başlangıç için statik — ilk döngüde dinamik hale gelir
 COINS = COINS_FALLBACK
 
-SLOT_NOTIONAL = float(os.getenv("SLOT_NOTIONAL", "300"))
+SLOT_NOTIONAL = float(os.getenv("SLOT_NOTIONAL", "200"))
 MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "2"))
 LONG_RSI_MAX  = int(os.getenv("LONG_RSI_MAX", "72"))
 
