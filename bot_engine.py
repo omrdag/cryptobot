@@ -1099,7 +1099,8 @@ def bot_loop():
                 except: return None
 
             safe_sigs = {}
-            for _sym, _sig in signals.items():
+            try:
+              for _sym, _sig in signals.items():
                 safe_sigs[_sym] = {
                     "inst_id":     _sig.get("inst_id",""),
                     "rsi":         _jsafe(_sig.get("rsi",0)),
@@ -1124,6 +1125,8 @@ def bot_loop():
                         "reason": str(_sig.get("short",{}).get("reason",""))[:120],
                     },
                 }
+            except Exception as _se:
+                _log(f"[SAFE_SIGS] Hata: {_se}", "warning")
             with _lock:
                 engine_state["signals"]   = safe_sigs
                 engine_state["last_scan"] = datetime.now(timezone.utc).isoformat()
