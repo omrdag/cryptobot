@@ -844,52 +844,11 @@ function applyPositions(pos) {
   updateTopBarPnL();
 }
 
-// ── processState (legacy, kept for safety) ────────────────────────────────────
+// ── processState (legacy stub) ────────────────────────────────────────────────
 function processState(d) {
-  // kept empty — SSE now handled by connectSSE directly
+  // All data now handled in connectSSE directly
 }
-    if (pos.length > prevCount) {
-      const p = pos[pos.length - 1];
-      const pSym = p.symbol || p.sym || coinLabel(p.instId||'') || '?';
-      toast('🟢 Yeni pozisyon: ' + pSym, 'buy');
-    }
-  }
-  // Signals
-  if (d.signals) {
-    state.signals = d.signals;
-    if (currentPage === 'signals') renderSignals();
-  }
-  // Regime
-  if (d.regime) {
-    state.regime = d.regime;
-    renderRegime();
-  }
-  // Risk
-  if (d.riskState) {
-    state.riskState = d.riskState;
-    renderRisk();
-  }
-  // Grid
-  if (d.grid) {
-    state.grid = d.grid;
-    renderGrid();
-  }
-  // Logs
-  if (d.logs) {
-    const newLogs = d.logs.filter(l => !state.logs.includes(l));
-    state.logs = d.logs;
-    if (newLogs.length) appendLogs(newLogs);
-    document.getElementById('log-count').textContent = state.logs.length + ' log';
-  }
-  // Loop / scan
-  if (d.loopCount !== undefined) {
-    document.getElementById('loop-val').textContent = '#' + d.loopCount;
-  }
-  if (d.lastScan) {
-    const t = new Date(d.lastScan);
-    document.getElementById('scan-val').textContent = t.getHours().toString().padStart(2,'0') + ':' + t.getMinutes().toString().padStart(2,'0') + ':' + t.getSeconds().toString().padStart(2,'0');
-  }
-}
+
 
 // ── POSITIONS ─────────────────────────────────────────────────────────────────
 function iconClass(sym) {
@@ -907,12 +866,20 @@ function coinLabel(sym) {
 
 function renderPositions() {
   const grid = document.getElementById('pos-grid');
-  if (!state.positions.length) {
+  if (!grid) return;
+  if (!state.positions || !state.positions.length) {
     grid.innerHTML = `<div class="empty-state"><div class="es-icon">◈</div><div class="es-text">Açık pozisyon yok</div></div>`;
     updateTopBarPnL();
     return;
   }
-  grid.innerHTML = state.positions.map(p => posCard(p)).join('');
+  try {
+    grid.innerHTML = state.positions.map(p => {
+      try { return posCard(p); }
+      catch(e) { return `<div style="padding:10px;color:var(--red);font-size:11px">Kart hatası: ${e.message}</div>`; }
+    }).join('');
+  } catch(e) {
+    grid.innerHTML = `<div style="padding:20px;color:var(--red)">Render hatası: ${e.message}</div>`;
+  }
   updateTopBarPnL();
 }
 
@@ -935,7 +902,8 @@ function posCard(p) {
   // Use live WS price if available, else current_price from API
   const priceKey = sym.includes('USDT') ? sym : sym + 'USDT';
   const wsPrice  = state.prices[priceKey] || state.prices[sym] || 0;
-  const curPrice = wsPrice || parseFloat(p.current_price || entry);
+  const apiPrice = parseFloat(p.current_price || 0);
+  const curPrice = wsPrice || apiPrice || entry;
 
   // PnL: prefer live calculation from WS price, fallback to API pnl
   let pnl, pnlPct;
@@ -1298,18 +1266,10 @@ function pollPositions() {
       const pos = Array.isArray(data) ? data
                 : Array.isArray(data.positions) ? data.positions
                 : [];
+      console.log('[CryptoBot] positions fetched:', pos.length, pos[0]);
       applyPositions(pos);
-
-      // balance from positions endpoint may include stats
-      if (data.stats) {
-        const bal = data.stats.totalBalance || data.stats.availableBalance || 0;
-        if (bal > 0) {
-          document.getElementById('acc-equity').textContent = '$' + bal.toFixed(2);
-          document.getElementById('t-balance').textContent  = '$' + bal.toFixed(2);
-        }
-      }
     })
-    .catch(() => {});
+    .catch(e => console.warn('[CryptoBot] positions fetch error:', e));
 }
 
 // ── INIT ──────────────────────────────────────────────────────────────────────
