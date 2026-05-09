@@ -1100,35 +1100,34 @@ def bot_loop():
 
             _log(f"[DEBUG] signals dict boyutu: {len(signals)}")
             safe_sigs = {}
-            try:
-              for _sym, _sig in signals.items():
-                safe_sigs[_sym] = {
-                    "inst_id":     _sig.get("inst_id",""),
-                    "rsi":         _jsafe(_sig.get("rsi",0)),
-                    "df_1h":       None,
-                    "in_position": bool(_sig.get("in_position",False)),
-                    "timestamp":   str(_sig.get("timestamp","")),
-                    "long": {
-                        "score": _jsafe(_sig.get("long",{}).get("score",0)),
-                        "enter": bool(_sig.get("long",{}).get("enter",False)),
-                        "sl":    _jsafe(_sig.get("long",{}).get("sl",0)),
-                        "tp":    _jsafe(_sig.get("long",{}).get("tp",0)),
-                        "entry": _jsafe(_sig.get("long",{}).get("entry",0)),
-                        "reason": str(_sig.get("long",{}).get("reason",""))[:120],
-                        "rsi":   _jsafe(_sig.get("long",{}).get("rsi",0)),
-                    },
-                    "short": {
-                        "score": _jsafe(_sig.get("short",{}).get("score",0)),
-                        "enter": bool(_sig.get("short",{}).get("enter",False)),
-                        "sl":    _jsafe(_sig.get("short",{}).get("sl",0)),
-                        "tp":    _jsafe(_sig.get("short",{}).get("tp",0)),
-                        "entry": _jsafe(_sig.get("short",{}).get("entry",0)),
-                        "reason": str(_sig.get("short",{}).get("reason",""))[:120],
-                    },
-                }
-            except Exception as _se:
-                import traceback
-                _log(f"[SAFE_SIGS] Hata: {_se} | {traceback.format_exc()[:200]}", "warning")
+            for _sym, _sig in signals.items():
+                try:
+                    safe_sigs[_sym] = {
+                        "inst_id":     _sig.get("inst_id",""),
+                        "rsi":         _jsafe(_sig.get("rsi",0)),
+                        "df_1h":       None,
+                        "in_position": bool(_sig.get("in_position",False)),
+                        "timestamp":   str(_sig.get("timestamp","")),
+                        "long": {
+                            "score": _jsafe(_sig.get("long",{}).get("score",0)),
+                            "enter": bool(_sig.get("long",{}).get("enter",False)),
+                            "sl":    _jsafe(_sig.get("long",{}).get("sl",0)),
+                            "tp":    _jsafe(_sig.get("long",{}).get("tp",0)),
+                            "entry": _jsafe(_sig.get("long",{}).get("entry",0)),
+                            "reason": str(_sig.get("long",{}).get("reason",""))[:120],
+                            "rsi":   _jsafe(_sig.get("long",{}).get("rsi",0)),
+                        },
+                        "short": {
+                            "score": _jsafe(_sig.get("short",{}).get("score",0)),
+                            "enter": bool(_sig.get("short",{}).get("enter",False)),
+                            "sl":    _jsafe(_sig.get("short",{}).get("sl",0)),
+                            "tp":    _jsafe(_sig.get("short",{}).get("tp",0)),
+                            "entry": _jsafe(_sig.get("short",{}).get("entry",0)),
+                            "reason": str(_sig.get("short",{}).get("reason",""))[:120],
+                        },
+                    }
+                except Exception as _se:
+                    _log(f"[SAFE_SIGS] {_sym} hata: {_se}", "warning")
             with _lock:
                 engine_state["signals"]   = safe_sigs
                 engine_state["last_scan"] = datetime.now(timezone.utc).isoformat()
