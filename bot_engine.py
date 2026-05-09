@@ -76,6 +76,10 @@ def get_active_coins() -> list:
             COIN_MAP.update(_build_coin_map(best))
             names = [c.replace("-USDT-SWAP","") for c in best]
             _log(f"[SCANNER] Aktif coinler: {names}")
+            # Yeni coinler için leverage ayarla
+            for _inst in best:
+                try: set_leverage(_inst, LEVERAGE)
+                except: pass
             return best
         except Exception as _ge:
             _log(f"[SCANNER] ⚠️ Hata, fallback: {_ge}", "warning")
@@ -1135,7 +1139,10 @@ def bot_loop():
 
                         _sl  = _lsl  or _lentry * 0.97
                         _tp  = _ltp  or _lentry * 1.06
-                        _log(f"🟢 {_esym} LONG | Puan:{_lscore}/11 | RSI:{_lrsi:.1f} | Giriş:${_lentry:.4f} SL:${_sl:.4f} TP:${_tp:.4f}")
+                        # Emir öncesi leverage kesin ayarla
+                        try: set_leverage(_einst, LEVERAGE)
+                        except: pass
+                        _log(f"🟢 {_esym} LONG | Puan:{_lscore}/11 | RSI:{_lrsi:.1f} | Rejim:{current_regime} | Giriş:${_lentry:.4f} SL:${_sl:.4f} TP:${_tp:.4f} | {LEVERAGE}x")
                         _ok = place_order(_einst, "buy", SLOT_NOTIONAL, _lentry, sl_price=_sl, tp1_price=_tp, tp2_price=_tp)
                         if _ok:
                             _bot_opened_positions.add(_einst)
