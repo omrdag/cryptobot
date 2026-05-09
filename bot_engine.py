@@ -46,20 +46,14 @@ PAPER_TRADING  = os.getenv("PAPER_TRADING", "true").lower() != "false"
 LEVERAGE       = int(os.getenv("LEVERAGE", "10"))
 LOOP_SECONDS   = int(os.getenv("LOOP_SECONDS", "60"))
 
-# ── Coin Listesi — BTC, BNB, SOL, ONDO, HYPE ─────────────────────────────────
+# ── Coin Listesi — BTC + SOL (odaklı, likit) ───────────────────────────────
 COINS = [
     "BTC-USDT-SWAP",
-    "BNB-USDT-SWAP",
     "SOL-USDT-SWAP",
-    "ONDO-USDT-SWAP",
-    "HYPE-USDT-SWAP",
 ]
 COIN_MAP = {
-    "BTC-USDT-SWAP":  "BTCUSDT",
-    "BNB-USDT-SWAP":  "BNBUSDT",
-    "SOL-USDT-SWAP":  "SOLUSDT",
-    "ONDO-USDT-SWAP": "ONDOUSDT",
-    "HYPE-USDT-SWAP": "HYPEUSDT",
+    "BTC-USDT-SWAP": "BTCUSDT",
+    "SOL-USDT-SWAP": "SOLUSDT",
 }
 
 SLOT_NOTIONAL = float(os.getenv("SLOT_NOTIONAL", "500"))
@@ -451,7 +445,7 @@ def run_signals(positions: list) -> dict:
         signals[sym] = {
             "inst_id":     inst_id,
             "rsi":         round(rsi_val, 1),
-            "df_1h":       df_1h,
+            "df_1h":       None,
             "long":  {
                 "score":  long_res.score,
                 "enter":  long_res.should_enter,
@@ -1043,8 +1037,41 @@ def bot_loop():
                 positions = get_open_positions()
 
             signals = run_signals(positions)
+
+            # Sanitize signals — strip DataFrames and non-serializable objects
+            def _jsafe(v):
+                if isinstance(v, (bool,int,str,type(None))): return v
+                try: return float(v)
+                except: return None
+
+            safe_sigs = {}
+            for _sym, _sig in signals.items():
+                safe_sigs[_sym] = {
+                    "inst_id":     _sig.get("inst_id",""),
+                    "rsi":         _jsafe(_sig.get("rsi",0)),
+                    "df_1h":       None,
+                    "in_position": bool(_sig.get("in_position",False)),
+                    "timestamp":   str(_sig.get("timestamp","")),
+                    "long": {
+                        "score": _jsafe(_sig.get("long",{}).get("score",0)),
+                        "enter": bool(_sig.get("long",{}).get("enter",False)),
+                        "sl":    _jsafe(_sig.get("long",{}).get("sl",0)),
+                        "tp":    _jsafe(_sig.get("long",{}).get("tp",0)),
+                        "entry": _jsafe(_sig.get("long",{}).get("entry",0)),
+                        "reason": str(_sig.get("long",{}).get("reason",""))[:120],
+                        "rsi":   _jsafe(_sig.get("long",{}).get("rsi",0)),
+                    },
+                    "short": {
+                        "score": _jsafe(_sig.get("short",{}).get("score",0)),
+                        "enter": bool(_sig.get("short",{}).get("enter",False)),
+                        "sl":    _jsafe(_sig.get("short",{}).get("sl",0)),
+                        "tp":    _jsafe(_sig.get("short",{}).get("tp",0)),
+                        "entry": _jsafe(_sig.get("short",{}).get("entry",0)),
+                        "reason": str(_sig.get("short",{}).get("reason",""))[:120],
+                    },
+                }
             with _lock:
-                engine_state["signals"]   = signals
+                engine_state["signals"]   = safe_sigs
                 engine_state["last_scan"] = datetime.now(timezone.utc).isoformat()
 
             if loop_num == 1 or loop_num % 5 == 0:
