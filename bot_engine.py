@@ -1098,6 +1098,7 @@ def bot_loop():
                 try: return float(v)
                 except: return None
 
+            _log(f"[DEBUG] signals dict boyutu: {len(signals)}")
             safe_sigs = {}
             try:
               for _sym, _sig in signals.items():
@@ -1126,7 +1127,8 @@ def bot_loop():
                     },
                 }
             except Exception as _se:
-                _log(f"[SAFE_SIGS] Hata: {_se}", "warning")
+                import traceback
+                _log(f"[SAFE_SIGS] Hata: {_se} | {traceback.format_exc()[:200]}", "warning")
             with _lock:
                 engine_state["signals"]   = safe_sigs
                 engine_state["last_scan"] = datetime.now(timezone.utc).isoformat()
