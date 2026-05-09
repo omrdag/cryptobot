@@ -456,15 +456,23 @@ def run_signals(positions: list) -> dict:
     signals   = {}
 
     active_coins = get_active_coins()
+    _log(f"[SIGNALS] Taranan coinler: {[c.replace('-USDT-SWAP','') for c in active_coins]}")
     for inst_id in active_coins:
-        sym = COIN_MAP.get(inst_id, inst_id.replace("-USDT-SWAP","USDT"))
-
-        df = fetch_ohlcv(inst_id, bar="5m", limit=100)
-        if df is None or len(df) < 55:
-            _log(f"{sym}: yetersiz veri ({len(df) if df is not None else 0} bar)")
+        sym = COIN_MAP.get(inst_id, inst_id.replace("-USDT-SWAP","USDT").replace("-",""))
+        try:
+            df = fetch_ohlcv(inst_id, bar="5m", limit=100)
+        except Exception as _fe:
+            _log(f"[SIGNALS] {sym} veri çekme hatası: {_fe}", "warning")
             continue
+        if df is None or len(df) < 55:
+            _log(f"[SIGNALS] {sym}: yetersiz 5m veri ({len(df) if df is not None else 0} bar) — atlanıyor")
+            continue
+        _log(f"[SIGNALS] {sym}: {len(df)} bar alındı, sinyal hesaplanıyor...")
 
-        df_1h    = fetch_ohlcv(inst_id, bar="1H", limit=60)
+        try:
+            df_1h = fetch_ohlcv(inst_id, bar="1H", limit=60)
+        except Exception:
+            df_1h = None
         hour_utc = datetime.now(timezone.utc).hour
 
         long_res  = long_strat.generate(df, symbol=sym, hour_utc=hour_utc,
