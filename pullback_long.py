@@ -167,12 +167,12 @@ class PullbackLongStrategy:
         return float(ema50.iloc[-1]) > float(ema50.iloc[-3])
 
     def _gate_volume(self, df: pd.DataFrame) -> bool:
-        """Gate 3: Son bar hacmi MA20 × 1.2 üzerinde"""
+        """Gate 3: Son bar hacmi MA20 × 0.8 üzerinde (esnetildi)"""
         if len(df) < 22:
             return True
         vol_ma20 = df["volume"].rolling(20).mean().iloc[-1]
         vol_now  = df["volume"].iloc[-1]
-        return vol_now > vol_ma20 * 1.2
+        return vol_now > vol_ma20 * 0.8
 
     # ── Bonus Puan Kontrolleri ─────────────────────────────────────────────────
     def _score_supertrend_flip(self, df: pd.DataFrame) -> int:
@@ -348,7 +348,7 @@ class PullbackLongStrategy:
         st_bullish, st_level = self._gate_supertrend_bullish(df)
         if not st_bullish:
             result.reason = (
-                f"✗ Gate: Supertrend bearish (fiyat ${close:.4f} < ST ${st_level:.4f})"
+                f"✗ Gate1 ST bearish: fiyat={close:.4f} ST={st_level:.4f}"
             )
             result.indicators = {"supertrend": st_level, "supertrend_bullish": False}
             return result
@@ -356,7 +356,7 @@ class PullbackLongStrategy:
         # ── Gate 2: 4H trend ──────────────────────────────────────────────────
         trend_4h_ok = self._gate_4h_trend(df_4h)
         if not trend_4h_ok:
-            result.reason = "✗ Gate: 4H EMA50 aşağı eğimli (büyük trend bearish)"
+            result.reason = "✗ Gate2: 4H EMA50 aşağı — bearish"
             return result
 
         # ── Gate 3: Volume ────────────────────────────────────────────────────
@@ -365,7 +365,7 @@ class PullbackLongStrategy:
         vol_now = float(df["volume"].iloc[-1])
         if not vol_ok:
             result.reason = (
-                f"✗ Gate: Hacim zayıf ({vol_now:.0f} < MA20×1.2={vol_ma*1.2:.0f})"
+                f"✗ Gate3: Hacim çok zayıf ({vol_now:.0f} < MA20×0.8={vol_ma*0.8:.0f})"
             )
             return result
 
