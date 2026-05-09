@@ -1099,6 +1099,61 @@ def bot_loop():
                 except: return None
 
             _log(f"[DEBUG] signals dict boyutu: {len(signals)}")
+
+            # ── EMİR AÇMA — signals hazır, hemen işle ────────────────────────
+            try:
+                _bot_pos_list = [p for p in positions if p["instId"] in _bot_opened_positions]
+                _open_cnt     = len(_bot_pos_list)
+                _open_longs   = {p["instId"] for p in _bot_pos_list if p.get("side")=="long"}
+                _long_cnt     = len(_open_longs)
+                _long_lim     = MAX_POSITIONS // 2 + (MAX_POSITIONS % 2)
+
+                _log(f"[EMIR] signals:{len(signals)} pos:{_open_cnt}/{MAX_POSITIONS} long:{_long_cnt}/{_long_lim} rejim:{current_regime}")
+
+                for _esym, _esig in signals.items():
+                    if _open_cnt >= MAX_POSITIONS:
+                        _log(f"⛔ Max pozisyon ({_open_cnt}/{MAX_POSITIONS})")
+                        break
+                    if _esig.get("in_position"):
+                        continue
+                    _einst  = _esig.get("inst_id","")
+                    _elong  = _esig.get("long",{})
+                    _lenter = _elong.get("enter", False)
+                    _lscore = int(_elong.get("score", 0))
+                    _lentry = float(_elong.get("entry", 0) or 0)
+                    _lsl    = float(_elong.get("sl", 0) or 0)
+                    _ltp    = float(_elong.get("tp", 0) or 0)
+                    _lrsi   = float(_elong.get("rsi", 0) or 0)
+
+                    _log(f"[EMIR-CHK] {_esym} enter={_lenter} score={_lscore} entry={_lentry:.4f} min={LONG_MIN_SCORE}")
+
+                    if (_lenter and _lentry > 0 and _lscore >= LONG_MIN_SCORE
+                            and _einst not in _open_longs
+                            and _long_cnt < _long_lim
+                            and current_regime != "NO_TRADE"
+                            and _lrsi < LONG_RSI_MAX):
+
+                        _sl  = _lsl  or _lentry * 0.97
+                        _tp  = _ltp  or _lentry * 1.06
+                        _log(f"🟢 {_esym} LONG | Puan:{_lscore}/11 | RSI:{_lrsi:.1f} | Giriş:${_lentry:.4f} SL:${_sl:.4f} TP:${_tp:.4f}")
+                        _ok = place_order(_einst, "buy", SLOT_NOTIONAL, _lentry, sl_price=_sl, tp1_price=_tp, tp2_price=_tp)
+                        if _ok:
+                            _bot_opened_positions.add(_einst)
+                            _open_cnt  += 1
+                            _long_cnt  += 1
+                            with _lock:
+                                engine_state["open_positions"][_esym] = {
+                                    "symbol": _esym, "side": "long",
+                                    "entry_price": _lentry, "stop_loss": _sl,
+                                    "take_profit": _tp, "score": _lscore,
+                                    "notional": SLOT_NOTIONAL, "leverage": LEVERAGE,
+                                    "opened_at": datetime.now(timezone.utc).isoformat(),
+                                }
+            except Exception as _ee:
+                import traceback
+                _log(f"[EMIR] Hata: {_ee} | {traceback.format_exc()[:300]}", "warning")
+
+            # ── SAFE_SIGS (dashboard için) ────────────────────────────────────
             safe_sigs = {}
             for _sym, _sig in signals.items():
                 try:
