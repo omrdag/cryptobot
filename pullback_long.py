@@ -353,11 +353,11 @@ class PullbackLongStrategy:
             result.indicators = {"supertrend": st_level, "supertrend_bullish": False}
             return result
 
-        # ── Gate 2: 4H trend ──────────────────────────────────────────────────
+        # ── Gate 2: 4H trend — uyarı verir ama engellemez ──────────────────
         trend_4h_ok = self._gate_4h_trend(df_4h)
         if not trend_4h_ok:
-            result.reason = "✗ Gate2: 4H EMA50 aşağı — bearish"
-            return result
+            # Engellemek yerine -1 skor penaltısı uygula
+            pass  # gate geçilmedi ama devam et — skor bonusları düşük kalır
 
         # ── Gate 3: Volume ────────────────────────────────────────────────────
         vol_ok = self._gate_volume(df)
@@ -374,6 +374,12 @@ class PullbackLongStrategy:
         # ── Bonus Puanlar ─────────────────────────────────────────────────────
         score = 0
         reasons = []
+        # 4H trend bonusu (gate 2 geçilirse +1)
+        if trend_4h_ok:
+            score += 1
+            reasons.append("✓ 4H trend↑")
+        else:
+            reasons.append("✗ 4H trend↓")
 
         s_flip = self._score_supertrend_flip(df)
         score += s_flip
