@@ -1205,29 +1205,8 @@ def bot_loop():
                         _log(f"⛔ {sym} LONG — NO_TRADE rejimi")
                         continue
 
-                    if _SCORER_AVAILABLE:
-                        try:
-                            _scorer.clear_cache()
-                            df_5m_sc = _scorer.get_cached_df(inst_id, "5m", 60)
-                            df_1m_sc = _scorer.get_cached_df(inst_id, "1m", 35)
-                            approved, sc_result = _scorer.approve(
-                                inst_id              = inst_id,
-                                side                 = "long",
-                                df_5m                = df_5m_sc,
-                                regime               = current_regime,
-                                open_positions_count = open_count,
-                                max_positions        = MAX_POSITIONS,
-                                daily_pnl            = engine_state.get("daily_pnl", 0.0),
-                                max_daily_loss       = float(os.getenv("MAX_DAILY_LOSS_USD", "50")),
-                                existing_sides       = [p.get("side", "long") for p in bot_positions],
-                                df_1h                = df_1h,
-                                df_1m                = df_1m_sc,
-                            )
-                            if not approved:
-                                _log(f"⛔ [SCORER] {sym} LONG reddedildi — {sc_result.reject_reason} | skor:{sc_result.total}/16")
-                                continue
-                        except Exception as _se:
-                            _log(f"[SCORER] {sym} hata (devam ediliyor): {_se}", "warning")
+                    # SCORER devre dışı — pullback sinyal motoru yeterli
+                    # _SCORER_AVAILABLE kontrolü kaldırıldı: daha fazla giriş fırsatı
 
                     price = sig["long"]["entry"]
                     sl    = sig["long"]["sl"] or price * (1 - 0.012)
