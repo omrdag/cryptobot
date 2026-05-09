@@ -73,11 +73,12 @@ def get_active_coins() -> list:
     if _DYNAMIC_SCAN:
         try:
             best = get_best_coins(top_n=2, min_score=4)
-            # COIN_MAP'i güncelle
             COIN_MAP.update(_build_coin_map(best))
+            names = [c.replace("-USDT-SWAP","") for c in best]
+            _log(f"[SCANNER] Aktif coinler: {names}")
             return best
         except Exception as _ge:
-            logging.getLogger("bot_engine").warning(f"[SCANNER] hata: {_ge}")
+            _log(f"[SCANNER] ⚠️ Hata, fallback: {_ge}", "warning")
     return COINS_FALLBACK
 
 # Başlangıç için statik — ilk döngüde dinamik hale gelir
@@ -1113,6 +1114,11 @@ def bot_loop():
                             k: {"score": v.get("score",0), "reason": v.get("reason",""), "rsi": v.get("rsi",0)}
                             for k,v in sc.items()
                         }
+                        # Top 3 skoru logla
+                        top3 = sorted(sc.values(), key=lambda x: x.get("score",0), reverse=True)[:3]
+                        for s in top3:
+                            name = s.get("inst_id","").replace("-USDT-SWAP","")
+                            _log(f"[SCANNER] {name}: {s.get('score',0)}/10 | RSI:{s.get('rsi',0)} | {s.get('reason','')}")
                     except: pass
 
             if loop_num == 1 or loop_num % 5 == 0:
