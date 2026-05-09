@@ -138,6 +138,33 @@ html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
 .fund-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(26,37,64,.4);font-size:11px}
 .fund-row:last-child{border-bottom:none}
 .fc{color:var(--text2)}
+/* 24H STATS PANEL */
+.stat24-wrap{padding:10px 14px 14px}
+.stat24-pnl{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 14px;border-radius:6px;margin-bottom:10px;
+  background:var(--bg2);border:1px solid var(--border2);
+}
+.stat24-pnl-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text3)}
+.stat24-pnl-val{font-size:22px;font-weight:700}
+.stat24-pnl-sub{font-size:10px;color:var(--text2);margin-top:2px}
+.stat24-counts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px}
+.stat24-box{background:var(--bg2);border-radius:5px;padding:8px 10px;text-align:center}
+.stat24-box-val{font-size:18px;font-weight:700}
+.stat24-box-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.stat24-bar-wrap{margin-top:4px}
+.stat24-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:10px}
+.stat24-bar-label{width:48px;color:var(--text3)}
+.stat24-bar-track{flex:1;height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.stat24-bar-fill{height:100%;border-radius:3px;transition:width .4s}
+.stat24-bar-num{width:28px;text-align:right;font-weight:600}
+.stat24-trades{margin-top:10px}
+.stat24-trade-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(26,37,64,.4);font-size:10px}
+.stat24-trade-row:last-child{border-bottom:none}
+.str-sym{font-weight:600;color:var(--text)}
+.str-dir{font-size:9px;font-weight:700}
+.str-pnl{font-weight:600}
+.str-time{font-size:9px;color:var(--text3)}
 /* TOAST */
 #toasts{position:fixed;bottom:20px;right:20px;z-index:9000;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
 .toast{background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:10px 14px;font-size:11px;min-width:220px;display:flex;align-items:center;gap:10px;animation:tin .3s ease}
@@ -244,6 +271,53 @@ html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
       <div style="padding:8px 14px;font-size:11px;color:var(--text2)">
         <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text3)">Döngü #</span><span id="r-loop">0</span></div>
         <div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">Son Tarama</span><span id="r-scan" style="font-size:10px">--</span></div>
+      </div>
+    </div>
+    <div class="rp-sec">
+      <div class="rp-title">SON 24 SAAT <span class="rp-badge" id="s24-updated">--</span></div>
+      <div class="stat24-wrap">
+        <!-- PnL büyük gösterim -->
+        <div class="stat24-pnl">
+          <div>
+            <div class="stat24-pnl-label">24s Net PnL</div>
+            <div class="stat24-pnl-val" id="s24-pnl">$0.00</div>
+            <div class="stat24-pnl-sub" id="s24-avg">Ort: $0.00 / işlem</div>
+          </div>
+          <div style="text-align:right">
+            <div class="stat24-pnl-label">Win Rate</div>
+            <div style="font-size:20px;font-weight:700;margin-top:4px" id="s24-wr">--%</div>
+          </div>
+        </div>
+        <!-- İşlem sayıları -->
+        <div class="stat24-counts">
+          <div class="stat24-box">
+            <div class="stat24-box-val neu" id="s24-total">0</div>
+            <div class="stat24-box-lbl">Toplam</div>
+          </div>
+          <div class="stat24-box">
+            <div class="stat24-box-val pos" id="s24-wins">0</div>
+            <div class="stat24-box-lbl">Kazanan</div>
+          </div>
+          <div class="stat24-box">
+            <div class="stat24-box-val neg" id="s24-losses">0</div>
+            <div class="stat24-box-lbl">Kaybeden</div>
+          </div>
+        </div>
+        <!-- Oransal bar -->
+        <div class="stat24-bar-wrap">
+          <div class="stat24-bar-row">
+            <span class="stat24-bar-label" style="color:var(--green)">Kazanan</span>
+            <div class="stat24-bar-track"><div class="stat24-bar-fill" id="s24-wbar" style="width:0%;background:var(--green)"></div></div>
+            <span class="stat24-bar-num pos" id="s24-wpct">0%</span>
+          </div>
+          <div class="stat24-bar-row">
+            <span class="stat24-bar-label" style="color:var(--red)">Kaybeden</span>
+            <div class="stat24-bar-track"><div class="stat24-bar-fill" id="s24-lbar" style="width:0%;background:var(--red)"></div></div>
+            <span class="stat24-bar-num neg" id="s24-lpct">0%</span>
+          </div>
+        </div>
+        <!-- Son 5 işlem -->
+        <div class="stat24-trades" id="s24-trades"></div>
       </div>
     </div>
     <div>
@@ -566,7 +640,71 @@ function renderGrid(grid){
   ).join('');
 }
 
-/* ── HISTORY ── */
+/* ── 24H STATS ── */
+function load24h(){
+  fetch(API+'/api/trades')
+    .then(r=>r.json())
+    .then(data=>{
+      const all=Array.isArray(data)?data:(data.trades||[]);
+      const now=Date.now();
+      const since=now-24*60*60*1000;
+      // Filter last 24h closed trades
+      const trades=all.filter(t=>{
+        const ts=t.closed_at||t.opened_at||t.time||'';
+        if(!ts) return false;
+        const d=new Date(ts);
+        return !isNaN(d)&&d.getTime()>=since&&(t.status==='closed'||t.pnl!==0);
+      });
+      const total=trades.length;
+      const wins=trades.filter(t=>(+t.pnl||0)>0).length;
+      const losses=total-wins;
+      const netPnl=trades.reduce((a,t)=>a+(+t.pnl||0),0);
+      const avgPnl=total>0?netPnl/total:0;
+      const wr=total>0?Math.round(wins/total*100):0;
+      const wpct=total>0?Math.round(wins/total*100):0;
+      const lpct=100-wpct;
+      const pp=netPnl>=0;
+
+      // Update DOM
+      const pEl=document.getElementById('s24-pnl');
+      if(pEl){pEl.textContent=(pp?'+':'')+`$${Math.abs(netPnl).toFixed(2)}`;pEl.style.color=pp?'var(--green)':'var(--red)';}
+      const avgEl=document.getElementById('s24-avg');
+      if(avgEl) avgEl.textContent=`Ort: ${avgPnl>=0?'+':''}$${avgPnl.toFixed(2)} / işlem`;
+      const wrEl=document.getElementById('s24-wr');
+      if(wrEl){wrEl.textContent=wr+'%'; wrEl.style.color=wr>=50?'var(--green)':'var(--red)';}
+      setText('s24-total',total);
+      setText('s24-wins',wins);
+      setText('s24-losses',losses);
+      const wb=document.getElementById('s24-wbar'); if(wb) wb.style.width=wpct+'%';
+      const lb=document.getElementById('s24-lbar'); if(lb) lb.style.width=lpct+'%';
+      setText('s24-wpct',wpct+'%');
+      setText('s24-lpct',lpct+'%');
+      // Updated time
+      const upEl=document.getElementById('s24-updated');
+      if(upEl){const n=new Date();upEl.textContent=[n.getHours(),n.getMinutes()].map(x=>String(x).padStart(2,'0')).join(':')+'\'de güncellendi';}
+      // Last 5 trades list
+      const listEl=document.getElementById('s24-trades');
+      if(listEl){
+        const recent=trades.slice(0,5);
+        if(!recent.length){listEl.innerHTML='<div style="color:var(--text3);font-size:10px;padding:4px 0">24s içinde işlem yok</div>';return;}
+        listEl.innerHTML=recent.map(t=>{
+          const pnl=+t.pnl||0; const pp2=pnl>=0;
+          const sym=(t.symbol||'').replace('USDT','');
+          const ts=fmtD(t.closed_at||t.opened_at||'');
+          return `<div class="stat24-trade-row">
+            <span class="str-sym">${sym}</span>
+            <span class="str-dir" style="color:${t.side==='long'?'var(--green)':'var(--red)'}">${(t.side||'').toUpperCase()}</span>
+            <span class="str-pnl" style="color:${pp2?'var(--green)':'var(--red)'}">${pp2?'+':''}$${Math.abs(pnl).toFixed(2)}</span>
+            <span class="str-time">${ts}</span>
+          </div>`;
+        }).join('');
+      }
+    })
+    .catch(()=>{});
+}
+function setText(id,val){const el=document.getElementById(id);if(el)el.textContent=val;}
+
+
 function loadHistory(){
   fetch(API+'/api/trades').then(r=>r.json()).then(data=>{
     const trades=Array.isArray(data)?data:(data.trades||[]);
@@ -627,7 +765,9 @@ function fmtD(ts){
 connectWS();
 connectSSE();
 poll();
+load24h();
 setInterval(poll, 5000);
+setInterval(load24h, 30000);
 setInterval(()=>{ if(curPage==='signals') renderSignals(); }, 10000);
 </script>
 </body>
