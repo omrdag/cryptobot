@@ -8,6 +8,7 @@ GÜNCELLEME — Nisan 2026:
   - RSI Filtresi: RSI > LONG_RSI_MAX iken long açılmaz (LONG_RSI_MAX=72)
   - Entry Scorer: Çok zaman dilimli giriş kalitesi motoru (entry_scorer.py)
   - Short geç kalma sorunu: RANGING+MIXED rejimlerinde short açılabilir
+  - Coin güncellemesi: BTC, BNB, SOL, ONDO, PUMP
 """
 
 import os, time, hmac, hashlib, base64, json, threading, logging
@@ -45,11 +46,24 @@ PAPER_TRADING  = os.getenv("PAPER_TRADING", "true").lower() != "false"
 LEVERAGE       = int(os.getenv("LEVERAGE", "10"))
 LOOP_SECONDS   = int(os.getenv("LOOP_SECONDS", "60"))
 
-COINS    = ["BTC-USDT-SWAP", "ETH-USDT-SWAP", "SOL-USDT-SWAP", "BNB-USDT-SWAP", "AVAX-USDT-SWAP"]
-COIN_MAP = {c: c.replace("-USDT-SWAP", "USDT") for c in COINS}
+# ── Coin Listesi — BTC, BNB, SOL, ONDO, PUMP ─────────────────────────────────
+COINS = [
+    "BTC-USDT-SWAP",
+    "BNB-USDT-SWAP",
+    "SOL-USDT-SWAP",
+    "ONDO-USDT-SWAP",
+    "PUMP-USDT-SWAP",
+]
+COIN_MAP = {
+    "BTC-USDT-SWAP":  "BTCUSDT",
+    "BNB-USDT-SWAP":  "BNBUSDT",
+    "SOL-USDT-SWAP":  "SOLUSDT",
+    "ONDO-USDT-SWAP": "ONDOUSDT",
+    "PUMP-USDT-SWAP": "PUMPUSDT",
+}
 
-SLOT_NOTIONAL = float(os.getenv("SLOT_NOTIONAL", "1000"))
-MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "3"))
+SLOT_NOTIONAL = float(os.getenv("SLOT_NOTIONAL", "500"))
+MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "5"))
 LONG_RSI_MAX  = int(os.getenv("LONG_RSI_MAX", "72"))
 
 _bot_opened_positions: set = set()
@@ -612,14 +626,14 @@ def check_exits(positions: list, signals: dict):
         reason       = ""
         if side == "long":
             if sl > 0 and price <= sl:
-                should_close, reason = True, f"SL tetiklendi (${price:.4f} ≤ ${sl:.4f})"
+                should_close, reason = True, f"SL tetiklendi (${price:.4f} <= ${sl:.4f})"
             elif tp > 0 and price >= tp:
-                should_close, reason = True, f"TP tetiklendi (${price:.4f} ≥ ${tp:.4f})"
+                should_close, reason = True, f"TP tetiklendi (${price:.4f} >= ${tp:.4f})"
         else:
             if sl > 0 and price >= sl:
-                should_close, reason = True, f"SL tetiklendi (${price:.4f} ≥ ${sl:.4f})"
+                should_close, reason = True, f"SL tetiklendi (${price:.4f} >= ${sl:.4f})"
             elif tp > 0 and price <= tp:
-                should_close, reason = True, f"TP tetiklendi (${price:.4f} ≤ ${tp:.4f})"
+                should_close, reason = True, f"TP tetiklendi (${price:.4f} <= ${tp:.4f})"
 
         if should_close:
             _log(f"🔴 {sym} KAPAT — {reason} | PnL: ${pnl_usdt:.2f}")
@@ -639,8 +653,8 @@ def check_exits(positions: list, signals: dict):
 
 
 # ── Funding Rate Arbitrage ────────────────────────────────────────────────────
-
-FUNDING_COINS            = ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
+# Funding arb sadece BTC ve BNB üzerinden çalışır (likit coinler)
+FUNDING_COINS            = ["BTC-USDT-SWAP", "BNB-USDT-SWAP"]
 FUNDING_NOTIONAL         = float(os.getenv("FUNDING_NOTIONAL", "1000"))
 FUNDING_ENTRY_THRESHOLD  = float(os.getenv("FUNDING_ENTRY_PCT", "0.01"))
 FUNDING_EXIT_THRESHOLD   = float(os.getenv("FUNDING_EXIT_PCT",  "0.01"))
@@ -732,9 +746,9 @@ def _is_good_trading_hour() -> bool:
 
 
 # ── Grid Trading ──────────────────────────────────────────────────────────────
-
-GRID_COINS         = ["BTC-USDT-SWAP", "ETH-USDT-SWAP"]
-GRID_TOTAL_CAPITAL = float(os.getenv("GRID_CAPITAL",  "1000"))
+# Grid sadece BTC üzerinden çalışır (en likit)
+GRID_COINS         = ["BTC-USDT-SWAP"]
+GRID_TOTAL_CAPITAL = float(os.getenv("GRID_CAPITAL",  "500"))
 GRID_LEVELS        = int(os.getenv("GRID_LEVELS",     "8"))
 GRID_LEVERAGE      = int(os.getenv("GRID_LEVERAGE",   "3"))
 GRID_ATR_MULT      = float(os.getenv("GRID_ATR_MULT", "3.0"))
@@ -919,7 +933,7 @@ BALANCE_FLOOR = float(os.getenv("BALANCE_FLOOR", "0"))
 def _check_balance_floor(balance: float, positions: list = None) -> bool:
     if balance <= BALANCE_FLOOR:
         if not engine_state.get("balance_floor_hit"):
-            _log(f"🚨 BAKİYE KORUMA — ${balance:.2f} ≤ ${BALANCE_FLOOR:.2f}", "error")
+            _log(f"🚨 BAKİYE KORUMA — ${balance:.2f} <= ${BALANCE_FLOOR:.2f}", "error")
             for p in (positions or []):
                 try:
                     if not PAPER_TRADING and OKX_KEY:
@@ -951,6 +965,7 @@ def _check_balance_floor(balance: float, positions: list = None) -> bool:
 
 def bot_loop():
     _log(f"Bot başlatıldı | Paper={PAPER_TRADING} | Kaldıraç={LEVERAGE}x | RSI_MAX={LONG_RSI_MAX} | Scorer={'aktif' if _SCORER_AVAILABLE else 'devre dışı'}")
+    _log(f"Coinler: {', '.join(COINS)}")
 
     db = None
     try:
@@ -1103,7 +1118,6 @@ def bot_loop():
                         and inst_id not in open_shorts
                         and long_count < long_limit):
 
-                    # RSI aşırı alım filtresi
                     if rsi_current > LONG_RSI_MAX and rsi_current > 0:
                         _log(f"⛔ [LONG RSI BLOKE] {sym} — RSI:{rsi_current:.1f} > {LONG_RSI_MAX}")
                         continue
@@ -1112,7 +1126,6 @@ def bot_loop():
                         _log(f"⛔ {sym} LONG — NO_TRADE rejimi")
                         continue
 
-                    # Entry Scorer onayı
                     if _SCORER_AVAILABLE:
                         try:
                             _scorer.clear_cache()
@@ -1203,7 +1216,6 @@ def bot_loop():
                         _log(f"⛔ {sym} SHORT — NO_TRADE rejimi")
                         continue
 
-                    # Entry Scorer onayı
                     if _SCORER_AVAILABLE:
                         try:
                             df_5m_sc = _scorer.get_cached_df(inst_id, "5m", 60)
