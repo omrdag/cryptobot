@@ -8,7 +8,7 @@ GÜNCELLEME — Nisan 2026:
   - RSI Filtresi: RSI > LONG_RSI_MAX iken long açılmaz (LONG_RSI_MAX=72)
   - Entry Scorer: Çok zaman dilimli giriş kalitesi motoru (entry_scorer.py)
   - Short geç kalma sorunu: RANGING+MIXED rejimlerinde short açılabilir
-  - Coin güncellemesi: BTC, BNB, SOL, ONDO, PUMP
+  - Coin güncellemesi: BTC, BNB, SOL, ONDO, HYPE
 """
 
 import os, time, hmac, hashlib, base64, json, threading, logging
@@ -46,20 +46,20 @@ PAPER_TRADING  = os.getenv("PAPER_TRADING", "true").lower() != "false"
 LEVERAGE       = int(os.getenv("LEVERAGE", "10"))
 LOOP_SECONDS   = int(os.getenv("LOOP_SECONDS", "60"))
 
-# ── Coin Listesi — BTC, BNB, SOL, ONDO, PUMP ─────────────────────────────────
+# ── Coin Listesi — BTC, BNB, SOL, ONDO, HYPE ─────────────────────────────────
 COINS = [
     "BTC-USDT-SWAP",
     "BNB-USDT-SWAP",
     "SOL-USDT-SWAP",
     "ONDO-USDT-SWAP",
-    "PUMP-USDT-SWAP",
+    "HYPE-USDT-SWAP",
 ]
 COIN_MAP = {
     "BTC-USDT-SWAP":  "BTCUSDT",
     "BNB-USDT-SWAP":  "BNBUSDT",
     "SOL-USDT-SWAP":  "SOLUSDT",
     "ONDO-USDT-SWAP": "ONDOUSDT",
-    "PUMP-USDT-SWAP": "PUMPUSDT",
+    "HYPE-USDT-SWAP": "HYPEUSDT",
 }
 
 SLOT_NOTIONAL = float(os.getenv("SLOT_NOTIONAL", "500"))
