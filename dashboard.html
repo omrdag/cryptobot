@@ -752,8 +752,71 @@ function connectSSE() {
   evtSource.onmessage = e => {
     try {
       const d = JSON.parse(e.data);
-      if (d.botStatus) processState(d.botStatus);
-    } catch(_) {}
+      // mock_api.py sends top-level: {positions, stats, signals, botStatus, regime, ...}
+
+      // Positions — top level array
+      if (Array.isArray(d.positions)) {
+        applyPositions(d.positions);
+      }
+
+      // Balance — from stats
+      if (d.stats) {
+        const bal = d.stats.totalBalance || d.stats.availableBalance || 0;
+        if (bal > 0) {
+          state.balance = bal;
+          document.getElementById('t-balance').textContent = '$' + bal.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});
+          document.getElementById('acc-equity').textContent = '$' + bal.toFixed(2);
+          const used = (d.stats.totalBalance||0) - (d.stats.availableBalance||0);
+          document.getElementById('acc-used').textContent = '$' + Math.max(0,used).toFixed(0);
+        }
+        // Float PnL from stats
+        const fpnl = d.stats.unrealizedPnl || 0;
+        const fpEl = document.getElementById('acc-float');
+        if (fpEl) {
+          fpEl.textContent = (fpnl >= 0?'+':'')+`$${fpnl.toFixed(2)}`;
+          fpEl.className = 'acc-val '+(fpnl>=0?'g':'r');
+        }
+      }
+
+      // Signals — top level or in botStatus
+      const sigs = d.signals || d.botStatus?.signals || {};
+      if (Object.keys(sigs).length) {
+        state.signals = sigs;
+        if (currentPage === 'signals') renderSignals();
+      }
+
+      // Regime — top level or in botStatus
+      const reg = d.regime || d.botStatus?.regime || {};
+      if (Object.keys(reg).length) {
+        state.regime = reg;
+        renderRegime();
+      }
+
+      // Risk / bot status
+      const bs = d.botStatus || {};
+      if (bs.loop_count !== undefined) document.getElementById('loop-val').textContent = '#'+bs.loop_count;
+      if (bs.last_scan) {
+        const t = new Date(bs.last_scan);
+        if (!isNaN(t)) document.getElementById('scan-val').textContent =
+          t.getHours().toString().padStart(2,'0')+':'+t.getMinutes().toString().padStart(2,'0')+':'+t.getSeconds().toString().padStart(2,'0');
+      }
+      if (bs.logs && bs.logs.length) {
+        const newLogs = bs.logs.filter(l => !state.logs.includes(l));
+        if (newLogs.length) { state.logs = bs.logs; appendLogs(newLogs); }
+        document.getElementById('log-count').textContent = state.logs.length + ' log';
+      }
+
+      // Grid
+      const grid = d.gridState || d.grid || bs.grid || {};
+      if (Object.keys(grid).length) { state.grid = grid; renderGrid(); }
+
+      // Trade stats for top bar
+      if (d.tradeStats) {
+        const wr = d.tradeStats.winRate || 0;
+        document.getElementById('t-regime').title = `Win Rate: ${wr}%`;
+      }
+
+    } catch(err) { console.warn('SSE parse error:', err); }
   };
   evtSource.onerror = () => {
     evtSource?.close();
@@ -765,23 +828,30 @@ function connectSSE() {
   };
 }
 
-function processState(d) {
-  // Balance
-  if (d.balance !== undefined) {
-    state.balance = d.balance;
-    document.getElementById('t-balance').textContent = '$' + d.balance.toLocaleString('tr-TR',{minimumFractionDigits:2,maximumFractionDigits:2});
-    document.getElementById('acc-equity').textContent = '$' + d.balance.toFixed(2);
+// ── applyPositions — mock_api.py exact field names ────────────────────────────
+function applyPositions(pos) {
+  const prevCount = state.positions.length;
+  state.positions = pos;
+  renderPositions();
+  const cnt = pos.length;
+  document.getElementById('t-pos').textContent = cnt;
+  document.getElementById('acc-openpos').textContent = cnt;
+  if (cnt > prevCount) {
+    const p = pos[pos.length - 1];
+    toast('🟢 Yeni pozisyon: ' + (p.symbol||'?'), 'buy',
+      (p.side||'long').toUpperCase() + ' · $' + (p.entry_price||0).toFixed(2));
   }
-  // Positions
-  if (d.positions) {
-    const prevCount = state.positions.length;
-    state.positions = d.positions;
-    renderPositions();
-    document.getElementById('t-pos').textContent = d.positions.length;
-    document.getElementById('acc-openpos').textContent = d.positions.length;
-    if (d.positions.length > prevCount) {
-      const p = d.positions[d.positions.length - 1];
-      toast('🟢 Yeni pozisyon: ' + (p.symbol || p.sym || '?'), 'buy');
+  updateTopBarPnL();
+}
+
+// ── processState (legacy, kept for safety) ────────────────────────────────────
+function processState(d) {
+  // kept empty — SSE now handled by connectSSE directly
+}
+    if (pos.length > prevCount) {
+      const p = pos[pos.length - 1];
+      const pSym = p.symbol || p.sym || coinLabel(p.instId||'') || '?';
+      toast('🟢 Yeni pozisyon: ' + pSym, 'buy');
     }
   }
   // Signals
@@ -847,26 +917,39 @@ function renderPositions() {
 }
 
 function posCard(p) {
-  const sym    = p.symbol || p.sym || coinLabel(p.instId||'');
-  const side   = p.side || 'long';
-  const entry  = parseFloat(p.entry || p.entry_price || p.avgPx || 0);
-  const sl     = parseFloat(p.stop_loss || 0);
-  const tp     = parseFloat(p.take_profit || 0);
-  const notional = parseFloat(p.notional || 0);
-  const margin   = notional > 0 ? notional / 10 : parseFloat(p.margin || 0);
-  const score    = p.score || '--';
+  // mock_api.py exact field names:
+  // symbol, side, entry_price, current_price, stop_loss, take_profit,
+  // pnl, pnl_percent, notional, leverage, score, strategy_name, is_adopted
+  const sym      = p.symbol || '';
+  const side     = p.side   || 'long';
+  const entry    = parseFloat(p.entry_price  || p.entry   || p.avgPx || 0);
+  const sl       = parseFloat(p.stop_loss    || p.sl      || 0);
+  const tp       = parseFloat(p.take_profit  || p.tp      || 0);
+  const notional = parseFloat(p.notional     || 0);
+  const lever    = parseFloat(p.leverage     || p.lever   || 10);
+  const margin   = notional > 0 ? notional / lever : 0;
+  const score    = p.score    || 0;
+  const strategy = p.strategy_name || p.strategy || 'Pullback';
+  const isManual = p.is_adopted || false;
 
-  // live price
-  const liveKey = sym + 'USDT';
-  const curPrice = state.prices[liveKey] || state.prices[sym] || entry;
-  const qty_coin = entry > 0 && notional > 0 ? notional / entry : 0;
-  const pnl = qty_coin > 0
-    ? (side === 'long' ? (curPrice - entry) * qty_coin : (entry - curPrice) * qty_coin)
-    : parseFloat(p.pnl || p.upl || 0);
-  const pnlPct = margin > 0 ? (pnl / margin * 100) : 0;
+  // Use live WS price if available, else current_price from API
+  const priceKey = sym.includes('USDT') ? sym : sym + 'USDT';
+  const wsPrice  = state.prices[priceKey] || state.prices[sym] || 0;
+  const curPrice = wsPrice || parseFloat(p.current_price || entry);
+
+  // PnL: prefer live calculation from WS price, fallback to API pnl
+  let pnl, pnlPct;
+  if (wsPrice > 0 && entry > 0 && notional > 0) {
+    const coinQty = notional / entry;
+    pnl    = side === 'long' ? (wsPrice - entry) * coinQty : (entry - wsPrice) * coinQty;
+    pnlPct = margin > 0 ? pnl / margin * 100 : 0;
+  } else {
+    pnl    = parseFloat(p.pnl || p.upl || 0);
+    pnlPct = parseFloat(p.pnl_percent || p.pnl_pct || 0);
+  }
   const pnlPos = pnl >= 0;
 
-  // progress bar (SL → TP)
+  // Progress bar SL → current → TP
   let barPct = 50;
   if (sl > 0 && tp > 0 && curPrice > 0) {
     const range = Math.abs(tp - sl);
@@ -878,19 +961,22 @@ function posCard(p) {
   }
   const barColor = barPct < 30 ? 'var(--red)' : barPct > 70 ? 'var(--green)' : 'var(--yellow)';
 
+  const displaySym = sym.replace('USDT','').replace('-USDT-SWAP','').toUpperCase();
+  const stLabel    = isManual ? '👤 Manuel' : strategy;
+
   return `<div class="pos-card ${side}-card" id="poscard-${sym}">
     <div class="pos-card-header">
       <div class="pos-coin">
-        <div class="pos-coin-icon ${iconClass(sym)}">${coinLabel(sym)}</div>
+        <div class="pos-coin-icon ${iconClass(sym)}">${displaySym.substring(0,4)}</div>
         <div class="pos-coin-info">
-          <div class="coin-sym">${sym}</div>
-          <div class="coin-meta">Skor:${score} · ${side.toUpperCase()} · 10x</div>
+          <div class="coin-sym">${displaySym}<span style="font-size:10px;color:var(--text3);font-weight:400">/USDT</span></div>
+          <div class="coin-meta">${stLabel} · ${lever}x${score ? ' · Skor:'+score : ''}</div>
         </div>
         <span class="pos-dir dir-${side}">${side === 'long' ? 'LONG' : 'SHORT'}</span>
       </div>
       <div class="pos-pnl">
         <div class="pos-pnl-val ${pnlPos ? 'pos' : 'neg'}" id="pnl-${sym}">
-          ${pnlPos ? '+' : ''}$${Math.abs(pnl).toFixed(2)}
+          ${pnlPos ? '+' : '-'}$${Math.abs(pnl).toFixed(2)}
         </div>
         <div class="pos-pnl-pct ${pnlPos ? 'pos' : 'neg'}" id="pnlpct-${sym}">
           ${pnlPos ? '+' : ''}${pnlPct.toFixed(2)}%
@@ -917,78 +1003,71 @@ function posCard(p) {
     </div>
     <div class="pos-bar-wrap">
       <div class="bar-labels">
-        <span style="color:var(--red)">SL ${sl > 0 ? formatPrice(sl, sym) : '--'}</span>
-        <span style="color:var(--green)">TP ${tp > 0 ? formatPrice(tp, sym) : '--'}</span>
+        <span style="color:var(--red)">SL ${sl > 0 ? formatPrice(sl,sym) : '--'}</span>
+        <span style="color:var(--text2);font-size:9px">${displaySym} ${formatPrice(curPrice,sym)}</span>
+        <span style="color:var(--green)">TP ${tp > 0 ? formatPrice(tp,sym) : '--'}</span>
       </div>
       <div class="bar-outer">
-        <div class="bar-sl" style="width:${barPct < 50 ? (50-barPct)*2 : 0}%"></div>
-        <div class="bar-tp" style="width:${barPct > 50 ? (barPct-50)*2 : 0}%"></div>
-        <div class="bar-cursor" style="left:${barPct}%;background:${barColor}"></div>
+        <div class="bar-cursor" style="left:${barPct}%;background:${barColor};box-shadow:0 0 8px ${barColor}"></div>
       </div>
       <div class="bar-center-vals">
-        <span>${formatPrice(curPrice, sym)}</span>
-        <span style="color:${barColor}">${barPct.toFixed(0)}% TP'ye doğru</span>
         <span>Marjin: $${margin.toFixed(0)}</span>
+        <span style="color:${barColor}">${barPct.toFixed(0)}% TP yönünde</span>
+        <span>Notional: $${notional.toFixed(0)}</span>
       </div>
     </div>
   </div>`;
 }
 
 function updatePositionPrices(sym, price) {
-  // Live update without full re-render
-  const cleanSym = sym.replace('USDT','');
-  const syms = [sym, cleanSym, sym.replace('USDT','-USDT-SWAP')];
-
+  // sym from WS: "BTCUSDT" — match against position.symbol
   state.positions.forEach(p => {
-    const psym = p.symbol || p.sym || '';
-    if (!syms.some(s => psym.includes(s) || psym === sym)) return;
+    if ((p.symbol||'') !== sym) return;
 
-    const entry   = parseFloat(p.entry || p.entry_price || p.avgPx || 0);
-    const sl      = parseFloat(p.stop_loss || 0);
-    const tp      = parseFloat(p.take_profit || 0);
-    const notional = parseFloat(p.notional || 0);
-    const margin   = notional > 0 ? notional / 10 : parseFloat(p.margin || 0);
+    const entry    = parseFloat(p.entry_price  || p.entry || 0);
+    const notional = parseFloat(p.notional     || 0);
+    const lever    = parseFloat(p.leverage     || 10);
+    const margin   = notional > 0 ? notional / lever : 0;
     const side     = p.side || 'long';
-    const qty_coin = entry > 0 && notional > 0 ? notional / entry : 0;
-    const pnl = qty_coin > 0
-      ? (side === 'long' ? (price - entry) * qty_coin : (entry - price) * qty_coin)
-      : 0;
+    const coinQty  = entry > 0 && notional > 0 ? notional / entry : 0;
+
+    const pnl    = coinQty > 0 ? (side === 'long' ? (price - entry)*coinQty : (entry - price)*coinQty) : parseFloat(p.pnl||0);
     const pnlPct = margin > 0 ? pnl / margin * 100 : 0;
     const pnlPos = pnl >= 0;
 
-    const pnlEl    = document.getElementById('pnl-'+psym);
-    const pnlpctEl = document.getElementById('pnlpct-'+psym);
-    const curpEl   = document.getElementById('curp-'+psym);
+    const pnlEl    = document.getElementById('pnl-'+sym);
+    const pnlpctEl = document.getElementById('pnlpct-'+sym);
+    const curpEl   = document.getElementById('curp-'+sym);
 
     if (pnlEl) {
-      pnlEl.textContent = (pnlPos ? '+' : '') + '$' + Math.abs(pnl).toFixed(2);
-      pnlEl.className = 'pos-pnl-val ' + (pnlPos ? 'pos' : 'neg');
+      pnlEl.textContent = (pnlPos?'+':'-')+'$'+Math.abs(pnl).toFixed(2);
+      pnlEl.className = 'pos-pnl-val '+(pnlPos?'pos':'neg');
     }
     if (pnlpctEl) {
-      pnlpctEl.textContent = (pnlPos ? '+' : '') + pnlPct.toFixed(2) + '%';
-      pnlpctEl.className = 'pos-pnl-pct ' + (pnlPos ? 'pos' : 'neg');
+      pnlpctEl.textContent = (pnlPos?'+':'')+pnlPct.toFixed(2)+'%';
+      pnlpctEl.className = 'pos-pnl-pct '+(pnlPos?'pos':'neg');
     }
     if (curpEl) curpEl.textContent = formatPrice(price, sym);
   });
 }
 
 function updateTopBarPnL() {
-  let totalPnl = 0;
-  state.positions.forEach(p => {
-    const sym = p.symbol || p.sym || '';
-    const cleanSym = sym + 'USDT';
-    const entry = parseFloat(p.entry || p.entry_price || p.avgPx || 0);
-    const price = state.prices[cleanSym] || state.prices[sym] || entry;
+  // Use pnl field directly from mock_api (already calculated server-side)
+  const totalPnl = state.positions.reduce((a, p) => {
+    // Try live WS price first
+    const sym   = p.symbol || '';
+    const entry = parseFloat(p.entry_price || p.entry || 0);
+    const wsP   = state.prices[sym] || 0;
     const notional = parseFloat(p.notional || 0);
-    const side = p.side || 'long';
-    const qty_coin = entry > 0 && notional > 0 ? notional / entry : 0;
-    const pnl = qty_coin > 0
-      ? (side === 'long' ? (price - entry) * qty_coin : (entry - price) * qty_coin)
-      : parseFloat(p.pnl || 0);
-    totalPnl += pnl;
-  });
+    const side  = p.side || 'long';
+    if (wsP > 0 && entry > 0 && notional > 0) {
+      const coinQty = notional / entry;
+      return a + (side === 'long' ? (wsP-entry)*coinQty : (entry-wsP)*coinQty);
+    }
+    return a + parseFloat(p.pnl || 0);
+  }, 0);
 
-  const el = document.getElementById('t-pnl');
+  const el  = document.getElementById('t-pnl');
   const fEl = document.getElementById('acc-float');
   const str = (totalPnl >= 0 ? '+' : '') + '$' + totalPnl.toFixed(2);
   if (el) { el.textContent = str; el.className = 'tm-val ' + (totalPnl >= 0 ? 'pos' : 'neg'); }
@@ -1210,21 +1289,25 @@ function fmtDate(ts) {
   return `${d.getDate().toString().padStart(2,'0')}/${(d.getMonth()+1).toString().padStart(2,'0')} ${d.getHours().toString().padStart(2,'0')}:${d.getMinutes().toString().padStart(2,'0')}`;
 }
 
-// ── FALLBACK REST poll (positions) ────────────────────────────────────────────
+// ── REST poll — positions + balance ───────────────────────────────────────────
 function pollPositions() {
   fetch(API + '/api/positions')
     .then(r => r.json())
     .then(data => {
-      if (data.positions) {
-        state.positions = data.positions;
-        renderPositions();
+      // mock_api returns plain array
+      const pos = Array.isArray(data) ? data
+                : Array.isArray(data.positions) ? data.positions
+                : [];
+      applyPositions(pos);
+
+      // balance from positions endpoint may include stats
+      if (data.stats) {
+        const bal = data.stats.totalBalance || data.stats.availableBalance || 0;
+        if (bal > 0) {
+          document.getElementById('acc-equity').textContent = '$' + bal.toFixed(2);
+          document.getElementById('t-balance').textContent  = '$' + bal.toFixed(2);
+        }
       }
-      if (data.balance) {
-        state.balance = data.balance;
-        document.getElementById('acc-equity').textContent = '$' + data.balance.toFixed(2);
-      }
-      const usedMargin = state.positions.reduce((a,p) => a + (parseFloat(p.notional||0)/10), 0);
-      document.getElementById('acc-used').textContent = '$' + usedMargin.toFixed(0);
     })
     .catch(() => {});
 }
@@ -1234,11 +1317,13 @@ function init() {
   renderCoinStrip();
   connectOKXWS();
   connectSSE();
-  setInterval(pollPositions, 15000);
+  // Poll every 5 seconds for positions
   pollPositions();
+  setInterval(pollPositions, 5000);
+  // Refresh signals page every 10 seconds
   setInterval(() => {
     if (currentPage === 'signals') renderSignals();
-  }, 5000);
+  }, 10000);
 }
 
 init();
