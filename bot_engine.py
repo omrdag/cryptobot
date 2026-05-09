@@ -1159,10 +1159,15 @@ def bot_loop():
                     _log(f"⛔ Max pozisyon doldu ({open_count}/{MAX_POSITIONS})")
                     break
                 if sig["in_position"]:
+                    _log(f"⏭ {sym} zaten pozisyonda")
                     continue
 
                 inst_id = sig["inst_id"]
                 df_1h   = sig.get("df_1h")
+                l_enter = sig.get("long",{}).get("enter", False)
+                l_entry = sig.get("long",{}).get("entry", 0)
+                l_score = sig.get("long",{}).get("score", 0)
+                _log(f"[EMIR-CHK] {sym} | enter={l_enter} entry={l_entry:.2f} score={l_score} effective_min={LONG_MIN_SCORE} long_count={long_count}/{long_limit}")
 
                 if _ADVANCED_MODULES:
                     try:
