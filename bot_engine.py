@@ -1,1484 +1,982 @@
-"""
-Bot Engine — Gerçek Sinyal + Emir Motoru
-=========================================
-mock_api.py tarafından arka plan thread olarak başlatılır.
-Her 60 saniyede bir coinleri tarar, sinyal üretir, OKX'e emir gönderir.
-
-GÜNCELLEME — Nisan 2026:
-  - RSI Filtresi: RSI > LONG_RSI_MAX iken long açılmaz (LONG_RSI_MAX=72)
-  - Entry Scorer: Çok zaman dilimli giriş kalitesi motoru (entry_scorer.py)
-  - Short geç kalma sorunu: RANGING+MIXED rejimlerinde short açılabilir
-  - Coin güncellemesi: BTC, BNB, SOL, ONDO, HYPE
-"""
-
-import os, time, hmac, hashlib, base64, json, threading, logging
-import urllib.request, urllib.parse
-from datetime import datetime, timezone
-from typing import Dict, Optional
-import pandas as pd
-
-try:
-    from dynamic_scanner import get_best_coins, get_scanner_scores
-    _DYNAMIC_SCAN = True
-except ImportError as _dse:
-    _DYNAMIC_SCAN = False
-    logging.getLogger("bot_engine").warning(f"Dynamic scanner yüklenemedi: {_dse}")
-
-try:
-    from regime_engine import (
-        detect_regime, get_btc_regime, coin_regime_modifier,
-        regime_summary, RegimeResult
-    )
-    from coin_selector import score_coins, format_selection_log, TIER_1
-    from risk_manager import get_risk_manager
-    from entry_recycler import get_recycler
-    _ADVANCED_MODULES = True
-except ImportError as _ie:
-    _ADVANCED_MODULES = False
-    logging.getLogger("bot_engine").warning(f"Gelişmiş modüller yüklenemedi: {_ie}")
-
-try:
-    import entry_scorer as _scorer
-    _SCORER_AVAILABLE = True
-except ImportError:
-    _SCORER_AVAILABLE = False
-
-log = logging.getLogger("bot_engine")
-
-# ── Config ────────────────────────────────────────────────────────────────────
-OKX_KEY        = os.getenv("OKX_API_KEY", "")
-OKX_SECRET     = os.getenv("OKX_API_SECRET", "")
-OKX_PASSPHRASE = os.getenv("OKX_PASSPHRASE", "")
-PAPER_TRADING  = os.getenv("PAPER_TRADING", "true").lower() != "false"
-LEVERAGE       = int(os.getenv("LEVERAGE", "12"))
-LOOP_SECONDS   = int(os.getenv("LOOP_SECONDS", "60"))
-
-# ── Coin Listesi — Dinamik (dynamic_scanner) veya fallback ──────────────────
-COINS_FALLBACK = [
-    "BTC-USDT-SWAP",
-    "SOL-USDT-SWAP",
-]
-# COIN_MAP: tüm bilinen coinler — scanner yeni coin seçerse buraya eklenir
-COIN_MAP: dict = {}
-
-def _build_coin_map(coins: list) -> dict:
-    """inst_id → sembol mapping oluştur."""
-    return {c: c.replace("-USDT-SWAP", "USDT").replace("-", "") for c in coins}
-
-# Başlangıç haritası
-COIN_MAP.update(_build_coin_map(COINS_FALLBACK))
-
-def get_active_coins() -> list:
-    """Her döngüde çağrılır — dinamik veya fallback."""
-    if _DYNAMIC_SCAN:
-        try:
-            best = get_best_coins(top_n=2, min_score=4)
-            COIN_MAP.update(_build_coin_map(best))
-            names = [c.replace("-USDT-SWAP","") for c in best]
-            _log(f"[SCANNER] Aktif coinler: {names}")
-            # Yeni coinler için leverage ayarla
-            for _inst in best:
-                try: set_leverage(_inst, LEVERAGE)
-                except: pass
-            return best
-        except Exception as _ge:
-            _log(f"[SCANNER] ⚠️ Hata, fallback: {_ge}", "warning")
-    return COINS_FALLBACK
-
-# Başlangıç için statik — ilk döngüde dinamik hale gelir
-COINS = COINS_FALLBACK
-
-SLOT_NOTIONAL = float(os.getenv("SLOT_NOTIONAL", "200"))
-MAX_POSITIONS = int(os.getenv("MAX_POSITIONS", "2"))
-LONG_RSI_MAX  = int(os.getenv("LONG_RSI_MAX", "72"))
-
-_bot_opened_positions: set = set()
-
-
-def _calc_dynamic_slot(balance: float, max_pos: int = None) -> float:
-    if max_pos is None:
-        max_pos = MAX_POSITIONS
-    if balance <= 0:
-        return max(50.0, SLOT_NOTIONAL)
-    dynamic = (balance * 0.80) / max(1, max_pos)
-    return float(max(50.0, min(dynamic, SLOT_NOTIONAL)))
-
-
-engine_state: Dict = {
-    "running":           False,
-    "last_scan":         None,
-    "signals":           {},
-    "open_positions":    {},
-    "logs":              [],
-    "balance":           0.0,
-    "loop_count":        0,
-    "grid":              {},
-    "balance_floor_hit": False,
-    "balance_floor_at":  None,
-    "regime":            {},
-    "risk_state":        {},
-    "daily_pnl":         0.0,
-    "active_coins":      [],
-    "scanner_scores":    {},
+<!DOCTYPE html>
+<html lang="tr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0">
+<title>CryptoBot Terminal</title>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<style>
+*{margin:0;padding:0;box-sizing:border-box;font-family:'IBM Plex Mono',monospace}
+:root{
+  --bg:#050810;--bg1:#080d1a;--bg2:#0c1224;
+  --border:#1a2540;--border2:#243060;
+  --green:#00ff88;--green-dim:rgba(0,255,136,.08);
+  --red:#ff3355;--red-dim:rgba(255,51,85,.08);
+  --blue:#0088ff;--cyan:#00ccff;--yellow:#ffcc00;--purple:#aa55ff;
+  --text:#e8edf8;--text2:#8899bb;--text3:#445577;
 }
-_lock = threading.Lock()
+html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
+.pos{color:var(--green)}.neg{color:var(--red)}.neu{color:var(--text)}
+/* TOPBAR */
+#topbar{display:flex;align-items:center;justify-content:space-between;height:42px;padding:0 16px;background:var(--bg1);border-bottom:1px solid var(--border);position:fixed;top:0;left:0;right:0;z-index:100}
+.logo{font-size:13px;font-weight:700;letter-spacing:3px;color:var(--cyan)}.logo span{color:var(--green)}
+.live-badge{display:flex;align-items:center;gap:6px;font-size:10px;color:var(--green);letter-spacing:1px}
+.live-dot{width:6px;height:6px;border-radius:50%;background:var(--green);animation:blink 1.2s infinite}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.3}}
+.top-metrics{display:flex;gap:20px}
+.tm{display:flex;flex-direction:column;align-items:flex-end}
+.tm-label{font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase}
+.tm-val{font-size:13px;font-weight:600}
+#clock{font-size:11px;color:var(--text2)}
+/* LAYOUT */
+#app{display:grid;grid-template-columns:200px 1fr 260px;margin-top:42px;height:calc(100vh - 42px)}
+/* SIDEBAR */
+#sidebar{background:var(--bg1);border-right:1px solid var(--border);display:flex;flex-direction:column;overflow:hidden}
+.s-lbl{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);padding:10px 14px 6px;border-bottom:1px solid var(--border)}
+.nav-btn{display:flex;align-items:center;gap:8px;padding:10px 14px;font-size:11px;color:var(--text2);cursor:pointer;border-left:2px solid transparent;background:none;border-top:none;border-right:none;border-bottom:none;width:100%;text-align:left;transition:all .15s}
+.nav-btn:hover{color:var(--text);background:rgba(255,255,255,.02)}
+.nav-btn.active{color:var(--cyan);border-left-color:var(--cyan);background:rgba(0,204,255,.04)}
+.coin-strip{flex:1;overflow-y:auto}
+.coin-strip::-webkit-scrollbar{width:3px}
+.coin-strip::-webkit-scrollbar-thumb{background:var(--border2)}
+.coin-row{display:flex;justify-content:space-between;align-items:center;padding:8px 14px;border-bottom:1px solid rgba(26,37,64,.5);cursor:pointer;transition:background .1s}
+.coin-row:hover{background:rgba(255,255,255,.02)}
+.cn{font-size:11px;font-weight:600}.cs{font-size:9px;color:var(--text3)}
+.cp{font-size:12px;font-weight:600;text-align:right}.cpct{font-size:10px;text-align:right}
+.flash-g{animation:fg .4s}@keyframes fg{0%{background:rgba(0,255,136,.2)}100%{background:transparent}}
+.flash-r{animation:fr .4s}@keyframes fr{0%{background:rgba(255,51,85,.2)}100%{background:transparent}}
+/* MAIN */
+#main{display:flex;flex-direction:column;overflow:hidden}
+.tabs{display:flex;border-bottom:1px solid var(--border);background:var(--bg1);flex-shrink:0}
+.tab{padding:0 18px;height:36px;font-size:10px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);cursor:pointer;display:flex;align-items:center;border-bottom:2px solid transparent;background:none;border-top:none;border-left:none;border-right:none;transition:all .15s}
+.tab:hover{color:var(--text)}.tab.active{color:var(--cyan);border-bottom-color:var(--cyan)}
+.page{display:none;flex:1;overflow-y:auto;padding:12px}
+.page.active{display:block}
+.page::-webkit-scrollbar{width:4px}
+.page::-webkit-scrollbar-thumb{background:var(--border2)}
+/* POS CARDS */
+.pos-grid{display:flex;flex-direction:column;gap:8px}
+.pos-card{background:var(--bg1);border:1px solid var(--border);border-radius:6px;overflow:hidden}
+.pos-card.long-card{border-left:3px solid var(--green)}
+.pos-card.short-card{border-left:3px solid var(--red)}
+.pc-head{display:flex;justify-content:space-between;align-items:center;padding:10px 14px 8px}
+.pc-left{display:flex;align-items:center;gap:10px}
+.pc-icon{width:30px;height:30px;border-radius:4px;display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700}
+.ic-btc{background:rgba(255,153,0,.15);color:#ff9900}
+.ic-bnb{background:rgba(255,193,7,.15);color:#ffc107}
+.ic-sol{background:rgba(170,85,255,.15);color:var(--purple)}
+.ic-ondo{background:rgba(0,136,255,.15);color:var(--blue)}
+.ic-pump{background:rgba(0,255,136,.15);color:var(--green)}
+.ic-hype{background:rgba(255,102,0,.15);color:#ff6600}
+.ic-def{background:rgba(136,153,187,.15);color:var(--text2)}
+.pc-sym{font-size:14px;font-weight:700}.pc-meta{font-size:9px;color:var(--text3);margin-top:2px}
+.pc-dir{font-size:9px;font-weight:700;padding:3px 8px;border-radius:3px;letter-spacing:1px}
+.dir-long{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,255,136,.2)}
+.dir-short{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,51,85,.2)}
+.pc-pnl{text-align:right}
+.pc-pnl-val{font-size:20px;font-weight:700}
+.pc-pnl-pct{font-size:11px;margin-top:2px}
+.pc-stats{display:grid;grid-template-columns:repeat(4,1fr);border-top:1px solid var(--border)}
+.pc-stat{padding:8px 12px;border-right:1px solid var(--border)}
+.pc-stat:last-child{border-right:none}
+.psl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.psv{font-size:11px;font-weight:500;margin-top:3px}
+.pc-bar{padding:8px 14px 10px}
+.bl{display:flex;justify-content:space-between;font-size:9px;margin-bottom:5px}
+.bar-outer{height:6px;background:rgba(255,255,255,.07);border-radius:3px;position:relative;overflow:hidden}
+.bar-fill-g{position:absolute;right:0;top:0;bottom:0;background:rgba(0,255,136,.3);border-radius:3px}
+.bar-fill-r{position:absolute;left:0;top:0;bottom:0;background:rgba(255,51,85,.3);border-radius:3px}
+.bar-cur{position:absolute;top:-2px;bottom:-2px;width:3px;border-radius:2px;transform:translateX(-50%)}
+.bc{display:flex;justify-content:space-between;font-size:9px;color:var(--text2);margin-top:4px}
+/* EMPTY */
+.empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:var(--text3);gap:10px}
+.empty-icon{font-size:28px;opacity:.3}.empty-text{font-size:12px;letter-spacing:1px}
+/* SIGNAL CARDS */
+.sig-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.sig-card{background:var(--bg1);border:1px solid var(--border);border-radius:6px;padding:14px;position:relative;overflow:hidden;transition:border-color .2s}
+.sig-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
+.sig-buy::before{background:var(--green)}.sig-sell::before{background:var(--red)}.sig-hold::before{background:var(--text3)}
+.sig-card.sig-buy{border-color:rgba(0,255,136,.3)}
+.sg-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.sg-coin{font-size:16px;font-weight:700}
+.sg-badge{font-size:10px;font-weight:700;padding:4px 10px;border-radius:4px;letter-spacing:1px}
+.b-buy{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,255,136,.3)}
+.b-sell{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,51,85,.3)}
+.b-hold{background:rgba(68,85,119,.2);color:var(--text2)}
+.sg-price{font-size:22px;font-weight:700;margin:8px 0 4px}
+.sg-score-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.sg-score-track{flex:1;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.sg-score-fill{height:100%;border-radius:3px;transition:width .5s}
+.sg-score-num{font-size:11px;color:var(--text2);min-width:36px;text-align:right}
+.sg-details{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.sg-detail{background:var(--bg2);border-radius:4px;padding:6px 8px}
+.sg-dl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.sg-dv{font-size:12px;font-weight:600;margin-top:2px}
+.sg-inds{display:flex;flex-wrap:wrap;gap:4px}
+.ind{font-size:9px;padding:2px 7px;border-radius:3px;letter-spacing:.5px}
+.ind-ok{background:rgba(0,255,136,.1);color:var(--green)}
+.ind-no{background:rgba(68,85,119,.15);color:var(--text3)}
+/* SCANNER TABLE */
+.scanner-wrap{margin-top:16px}
+.scanner-title{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.scanner-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px}
+.sc-card{background:var(--bg1);border:1px solid var(--border);border-radius:5px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center}
+.sc-name{font-size:12px;font-weight:600}
+.sc-right{text-align:right}
+.sc-score{font-size:14px;font-weight:700}
+.sc-reason{font-size:9px;color:var(--text3);margin-top:2px}
+/* HISTORY */
+.hist-table{width:100%;border-collapse:collapse;font-size:11px}
+.hist-table th{padding:8px 12px;text-align:left;font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--border);font-weight:400}
+.hist-table td{padding:9px 12px;border-bottom:1px solid rgba(26,37,64,.5)}
+.hist-table tr:hover td{background:rgba(255,255,255,.02)}
+/* LOGS */
+.log-wrap{font-size:10px;line-height:1.8;padding:4px}
+.log-line{padding:2px 8px;border-radius:3px}
+.log-time{color:var(--text3);margin-right:8px}
+.lg{color:var(--green)}.lr{color:var(--red)}.ly{color:var(--yellow)}.lc{color:var(--cyan)}.li{color:var(--text2)}
+/* RIGHT */
+#right{background:var(--bg1);border-left:1px solid var(--border);overflow-y:auto}
+#right::-webkit-scrollbar{width:3px}
+#right::-webkit-scrollbar-thumb{background:var(--border2)}
+.rp-sec{border-bottom:1px solid var(--border)}
+.rp-title{font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);padding:10px 14px 8px;display:flex;justify-content:space-between;align-items:center}
+.rp-badge{font-size:9px;padding:2px 6px;border-radius:3px;background:rgba(0,136,255,.1);color:var(--blue)}
+.acc-grid{padding:10px 14px 12px;display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.acc-card{background:var(--bg2);border-radius:4px;padding:8px 10px}
+.ac-label{font-size:9px;color:var(--text3);letter-spacing:.5px;text-transform:uppercase}
+.ac-val{font-size:14px;font-weight:700;margin-top:3px}
+.regime-card{padding:10px 14px 14px}
+.regime-name{font-size:16px;font-weight:700;margin-bottom:8px}
+.rn-up{color:var(--green)}.rn-down{color:var(--red)}.rn-range{color:var(--yellow)}.rn-nt{color:var(--purple)}
+.rm-grid{display:grid;grid-template-columns:1fr 1fr;gap:6px}
+.rm-item{background:var(--bg2);border-radius:4px;padding:7px 10px}
+.rm-label{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.rm-val{font-size:12px;font-weight:600;margin-top:2px}
+.regime-bar{height:3px;border-radius:2px;background:rgba(255,255,255,.06);overflow:hidden;margin-top:8px}
+.regime-bar-fill{height:100%;border-radius:2px}
+.fund-rows{padding:8px 14px}
+.fund-row{display:flex;justify-content:space-between;padding:5px 0;border-bottom:1px solid rgba(26,37,64,.4);font-size:11px}
+.fund-row:last-child{border-bottom:none}
+.fc{color:var(--text2)}
+/* 24H STATS PANEL */
+.stat24-wrap{padding:10px 14px 14px}
+.stat24-pnl{
+  display:flex;justify-content:space-between;align-items:center;
+  padding:10px 14px;border-radius:6px;margin-bottom:10px;
+  background:var(--bg2);border:1px solid var(--border2);
+}
+.stat24-pnl-label{font-size:9px;text-transform:uppercase;letter-spacing:1px;color:var(--text3)}
+.stat24-pnl-val{font-size:22px;font-weight:700}
+.stat24-pnl-sub{font-size:10px;color:var(--text2);margin-top:2px}
+.stat24-counts{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:10px}
+.stat24-box{background:var(--bg2);border-radius:5px;padding:8px 10px;text-align:center}
+.stat24-box-val{font-size:18px;font-weight:700}
+.stat24-box-lbl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px;margin-top:2px}
+.stat24-bar-wrap{margin-top:4px}
+.stat24-bar-row{display:flex;align-items:center;gap:8px;margin-bottom:4px;font-size:10px}
+.stat24-bar-label{width:48px;color:var(--text3)}
+.stat24-bar-track{flex:1;height:5px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.stat24-bar-fill{height:100%;border-radius:3px;transition:width .4s}
+.stat24-bar-num{width:28px;text-align:right;font-weight:600}
+.stat24-trades{margin-top:10px}
+.stat24-trade-row{display:flex;justify-content:space-between;align-items:center;padding:5px 0;border-bottom:1px solid rgba(26,37,64,.4);font-size:10px}
+.stat24-trade-row:last-child{border-bottom:none}
+.str-sym{font-weight:600;color:var(--text)}
+.str-dir{font-size:9px;font-weight:700}
+.str-pnl{font-weight:600}
+.str-time{font-size:9px;color:var(--text3)}
+/* SIGNAL BAR PANEL */
+.sbar-row{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--bg1);border:1px solid var(--border);border-radius:5px;cursor:pointer;transition:all .15s}
+.sbar-row:hover{border-color:var(--border2);background:var(--bg2)}
+.sbar-row.sbar-buy{border-color:rgba(0,255,136,.4);background:rgba(0,255,136,.04)}
+.sbar-row.sbar-sel{border-color:var(--cyan);background:rgba(0,204,255,.05)}
+.sbar-name{font-size:12px;font-weight:600;width:48px;flex-shrink:0;color:var(--text)}
+.sbar-track{flex:1;height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;position:relative}
+.sbar-fill{height:100%;border-radius:4px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.sbar-thresh{position:absolute;top:0;bottom:0;width:2px;background:rgba(0,255,136,.5);z-index:1}
+.sbar-score{font-size:11px;font-weight:500;width:32px;text-align:right;flex-shrink:0}
+.sbar-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;width:38px;text-align:center;flex-shrink:0}
+.sb-buy{background:rgba(0,255,136,.12);color:var(--green)}
+.sb-hold{background:rgba(68,85,119,.2);color:var(--text3)}
+.sbar-rsi{font-size:10px;width:40px;flex-shrink:0;text-align:right;color:var(--text3)}
+.sc-mini{background:var(--bg1);border:1px solid var(--border);border-radius:4px;padding:6px 8px;display:flex;justify-content:space-between;align-items:center}
+.sc-mini-name{font-size:11px;font-weight:600;color:var(--text)}
+.sc-mini-score{font-size:13px;font-weight:700}
+.sc-mini-rsi{font-size:9px;color:var(--text3)}
+/* TOAST */
+#toasts{position:fixed;bottom:20px;right:20px;z-index:9000;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
+.toast{background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:10px 14px;font-size:11px;min-width:220px;display:flex;align-items:center;gap:10px;animation:tin .3s ease}
+.toast.t-buy{border-left:3px solid var(--green)}.toast.t-info{border-left:3px solid var(--blue)}
+@keyframes tin{from{opacity:0;transform:translateX(20px)}to{opacity:1;transform:translateX(0)}}
+.t-title{font-weight:600}.t-sub{color:var(--text2);font-size:10px;margin-top:2px}
+@media(max-width:768px){
+  #app{grid-template-columns:1fr}
+  #sidebar,#right{display:none}
+  #mobnav{display:flex;position:fixed;bottom:0;left:0;right:0;height:52px;background:var(--bg1);border-top:1px solid var(--border);z-index:200}
+  .mob{flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;font-size:9px;color:var(--text3);cursor:pointer;background:none;border:none}
+  .mob.active{color:var(--cyan)}
+}
+@media(min-width:769px){#mobnav{display:none}}
+</style>
+</head>
+<body>
+<div id="topbar">
+  <div style="display:flex;align-items:center;gap:14px">
+    <div class="logo">Crypto<span>Bot</span></div>
+    <div class="live-badge"><div class="live-dot"></div><span id="live-txt">CANLI</span></div>
+  </div>
+  <div class="top-metrics">
+    <div class="tm"><div class="tm-label">Bakiye</div><div class="tm-val neu" id="t-bal">--</div></div>
+    <div class="tm"><div class="tm-label">Float PnL</div><div class="tm-val neu" id="t-pnl">--</div></div>
+    <div class="tm"><div class="tm-label">Pozisyon</div><div class="tm-val neu" id="t-pos">0</div></div>
+    <div class="tm"><div class="tm-label">Rejim</div><div class="tm-val neu" id="t-reg" style="font-size:11px">--</div></div>
+  </div>
+  <div id="clock">--:--:--</div>
+</div>
 
+<div id="app">
+  <div id="sidebar">
+    <div class="s-lbl">NAVİGASYON</div>
+    <button class="nav-btn active" id="nb-positions" onclick="goPage('positions')">◈ &nbsp;Pozisyonlar</button>
+    <button class="nav-btn" id="nb-signals" onclick="goPage('signals')">⟡ &nbsp;Sinyaller</button>
+    <button class="nav-btn" id="nb-history" onclick="goPage('history')">◷ &nbsp;Geçmiş</button>
+    <button class="nav-btn" id="nb-logs" onclick="goPage('logs')">≡ &nbsp;Loglar</button>
+    <div class="s-lbl" style="margin-top:auto">PİYASA</div>
+    <div class="coin-strip" id="coin-strip"></div>
+  </div>
 
-def _log(msg: str, level: str = "info"):
-    ts   = datetime.now(timezone.utc).strftime("%H:%M:%S")
-    line = f"[{ts}] {msg}"
-    getattr(log, level)(msg)
-    print(f"cryptobot: {line}", flush=True)
-    with _lock:
-        engine_state["logs"].append(line)
-        if len(engine_state["logs"]) > 50:
-            engine_state["logs"].pop(0)
+  <div id="main">
+    <div class="tabs">
+      <button class="tab active" id="tab-positions" onclick="goPage('positions')">Pozisyonlar</button>
+      <button class="tab" id="tab-signals" onclick="goPage('signals')">Sinyaller</button>
+      <button class="tab" id="tab-history" onclick="goPage('history')">Geçmiş</button>
+      <button class="tab" id="tab-logs" onclick="goPage('logs')">Loglar</button>
+    </div>
+    <div class="page active" id="page-positions">
+      <div class="pos-grid" id="pos-grid">
+        <div class="empty"><div class="empty-icon">◈</div><div class="empty-text">Yükleniyor...</div></div>
+      </div>
+    </div>
+    <div class="page" id="page-signals">
+      <!-- Üst özet kartlar -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
+        <div class="acc-card"><div class="ac-label">Rejim</div><div class="ac-val" id="sig-regime" style="font-size:12px;color:var(--text)">--</div></div>
+        <div class="acc-card"><div class="ac-label">BUY Sinyal</div><div class="ac-val" id="sig-buy-cnt" style="color:var(--green)">0</div></div>
+        <div class="acc-card"><div class="ac-label">Tarama</div><div class="ac-val" id="sig-scan-cnt" style="font-size:12px;color:var(--text2)">-- coin</div></div>
+        <div class="acc-card"><div class="ac-label">Sonraki</div><div class="ac-val" id="sig-countdown" style="font-size:12px;color:var(--text2)">~60s</div></div>
+      </div>
+      <!-- Bar listesi -->
+      <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;display:flex;justify-content:space-between">
+        <span>SİNYAL SKORU — EŞİK: 6/11</span>
+        <span id="sig-updated" style="color:var(--text3)">güncelleniyor...</span>
+      </div>
+      <div id="sig-bar-list" style="display:flex;flex-direction:column;gap:5px"></div>
+      <!-- Detay paneli -->
+      <div id="sig-detail" style="display:none;margin-top:14px;background:var(--bg1);border:1px solid var(--border2);border-radius:6px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div id="sig-det-coin" style="font-size:16px;font-weight:700;color:var(--text)">--</div>
+          <span id="sig-det-badge" style="font-size:10px;padding:3px 10px;border-radius:3px;font-weight:700">--</span>
+        </div>
+        <div id="sig-det-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px"></div>
+        <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Göstergeler</div>
+        <div id="sig-det-inds" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+      </div>
+      <!-- Scanner puanları -->
+      <div style="margin-top:16px">
+        <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">SCANNER — TÜM COINLER</div>
+        <div id="sig-scanner-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:5px"></div>
+      </div>
+    </div>
+    <div class="page" id="page-history">
+      <table class="hist-table">
+        <thead><tr><th>Sembol</th><th>Yön</th><th>Giriş</th><th>Çıkış</th><th>PnL</th><th>Zaman</th></tr></thead>
+        <tbody id="hist-body"><tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">Yükleniyor...</td></tr></tbody>
+      </table>
+    </div>
+    <div class="page" id="page-logs">
+      <div class="log-wrap" id="log-wrap"></div>
+    </div>
+  </div>
 
+  <div id="right">
+    <div class="rp-sec">
+      <div class="rp-title">HESAP</div>
+      <div class="acc-grid">
+        <div class="acc-card"><div class="ac-label">Equity</div><div class="ac-val" style="color:var(--green)" id="r-equity">--</div></div>
+        <div class="acc-card"><div class="ac-label">Kullanılan</div><div class="ac-val neu" id="r-used">--</div></div>
+        <div class="acc-card"><div class="ac-label">Float PnL</div><div class="ac-val neu" id="r-fpnl">--</div></div>
+        <div class="acc-card"><div class="ac-label">Açık Pos.</div><div class="ac-val" style="color:var(--cyan)" id="r-openpos">0</div></div>
+      </div>
+    </div>
+    <div class="rp-sec">
+      <div class="rp-title">PİYASA REJİMİ <span class="rp-badge" id="r-conf">--</span></div>
+      <div class="regime-card">
+        <div class="regime-name neu" id="r-regime">--</div>
+        <div class="rm-grid">
+          <div class="rm-item"><div class="rm-label">ADX (1H)</div><div class="rm-val neu" id="r-adx">--</div></div>
+          <div class="rm-item"><div class="rm-label">Pos. Çarpanı</div><div class="rm-val neu" id="r-mult">--</div></div>
+        </div>
+        <div class="regime-bar"><div class="regime-bar-fill" id="r-bar" style="width:0%;background:var(--cyan)"></div></div>
+      </div>
+    </div>
+    <div class="rp-sec">
+      <div class="rp-title">FUNDING RATES</div>
+      <div class="fund-rows">
+        <div class="fund-row"><span class="fc">BTC</span><span id="fr-btc" style="color:var(--text2)">--</span></div>
+        <div class="fund-row"><span class="fc">BNB</span><span id="fr-bnb" style="color:var(--text2)">--</span></div>
+        <div class="fund-row"><span class="fc">SOL</span><span id="fr-sol" style="color:var(--text2)">--</span></div>
+        <div class="fund-row"><span class="fc">ONDO</span><span id="fr-ondo" style="color:var(--text2)">--</span></div>
+        <div class="fund-row"><span class="fc">HYPE</span><span id="fr-hype" style="color:var(--text2)">--</span></div>
+      </div>
+    </div>
+    <div class="rp-sec">
+      <div class="rp-title">DÖNGÜ</div>
+      <div style="padding:8px 14px;font-size:11px;color:var(--text2)">
+        <div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="color:var(--text3)">Döngü #</span><span id="r-loop">0</span></div>
+        <div style="display:flex;justify-content:space-between"><span style="color:var(--text3)">Son Tarama</span><span id="r-scan" style="font-size:10px">--</span></div>
+      </div>
+    </div>
+    <div class="rp-sec">
+      <div class="rp-title">SON 24 SAAT <span class="rp-badge" id="s24-updated">--</span></div>
+      <div class="stat24-wrap">
+        <!-- PnL büyük gösterim -->
+        <div class="stat24-pnl">
+          <div>
+            <div class="stat24-pnl-label">24s Net PnL</div>
+            <div class="stat24-pnl-val" id="s24-pnl">$0.00</div>
+            <div class="stat24-pnl-sub" id="s24-avg">Ort: $0.00 / işlem</div>
+          </div>
+          <div style="text-align:right">
+            <div class="stat24-pnl-label">Win Rate</div>
+            <div style="font-size:20px;font-weight:700;margin-top:4px" id="s24-wr">--%</div>
+          </div>
+        </div>
+        <!-- İşlem sayıları -->
+        <div class="stat24-counts">
+          <div class="stat24-box">
+            <div class="stat24-box-val neu" id="s24-total">0</div>
+            <div class="stat24-box-lbl">Toplam</div>
+          </div>
+          <div class="stat24-box">
+            <div class="stat24-box-val pos" id="s24-wins">0</div>
+            <div class="stat24-box-lbl">Kazanan</div>
+          </div>
+          <div class="stat24-box">
+            <div class="stat24-box-val neg" id="s24-losses">0</div>
+            <div class="stat24-box-lbl">Kaybeden</div>
+          </div>
+        </div>
+        <!-- Oransal bar -->
+        <div class="stat24-bar-wrap">
+          <div class="stat24-bar-row">
+            <span class="stat24-bar-label" style="color:var(--green)">Kazanan</span>
+            <div class="stat24-bar-track"><div class="stat24-bar-fill" id="s24-wbar" style="width:0%;background:var(--green)"></div></div>
+            <span class="stat24-bar-num pos" id="s24-wpct">0%</span>
+          </div>
+          <div class="stat24-bar-row">
+            <span class="stat24-bar-label" style="color:var(--red)">Kaybeden</span>
+            <div class="stat24-bar-track"><div class="stat24-bar-fill" id="s24-lbar" style="width:0%;background:var(--red)"></div></div>
+            <span class="stat24-bar-num neg" id="s24-lpct">0%</span>
+          </div>
+        </div>
+        <!-- Son 5 işlem -->
+        <div class="stat24-trades" id="s24-trades"></div>
+      </div>
+    </div>
+    <div>
+      <div class="rp-title">GRID</div>
+      <div style="padding:10px 14px" id="r-grid"><div style="color:var(--text3);font-size:10px">--</div></div>
+    </div>
+  </div>
+</div>
 
-# ── OKX API ───────────────────────────────────────────────────────────────────
+<div id="mobnav">
+  <button class="mob active" onclick="goPage('positions')"><div>◈</div>Pozisyon</button>
+  <button class="mob" onclick="goPage('signals')"><div>⟡</div>Sinyal</button>
+  <button class="mob" onclick="goPage('history')"><div>◷</div>Geçmiş</button>
+  <button class="mob" onclick="goPage('logs')"><div>≡</div>Log</button>
+</div>
+<div id="toasts"></div>
 
-def _sign(ts, method, path, body=""):
-    msg = ts + method + path + body
-    sig = base64.b64encode(
-        hmac.new(OKX_SECRET.encode(), msg.encode(), hashlib.sha256).digest()
-    ).decode()
-    return {
-        "OK-ACCESS-KEY":        OKX_KEY,
-        "OK-ACCESS-SIGN":       sig,
-        "OK-ACCESS-TIMESTAMP":  ts,
-        "OK-ACCESS-PASSPHRASE": OKX_PASSPHRASE,
-        "Content-Type":         "application/json",
-        "User-Agent":           "CryptoBot/3.0",
-    }
+<script>
+/* ── STATE ── */
+const S = { positions:[], prices:{}, signals:{}, regime:{}, logs:[], balance:0, scannerScores:{} };
+let curPage = 'positions';
+const API = window.location.origin;
 
+/* ── CLOCK ── */
+setInterval(()=>{
+  const n=new Date();
+  document.getElementById('clock').textContent=
+    [n.getHours(),n.getMinutes(),n.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':');
+},1000);
 
-def _okx_get(path: str) -> dict:
-    try:
-        ts  = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        req = urllib.request.Request(
-            "https://www.okx.com" + path,
-            headers=_sign(ts, "GET", path)
-        )
-        with urllib.request.urlopen(req, timeout=4) as r:
-            return json.loads(r.read())
-    except Exception as e:
-        _log(f"OKX GET hatası {path}: {e}", "error")
-        return {}
+/* ── PAGE ── */
+function goPage(p){
+  curPage=p;
+  ['positions','signals','history','logs'].forEach(pg=>{
+    document.getElementById('page-'+pg).classList[pg===p?'add':'remove']('active');
+    const t=document.getElementById('tab-'+pg); if(t) t.classList[pg===p?'add':'remove']('active');
+    const n=document.getElementById('nb-'+pg);  if(n) n.classList[pg===p?'add':'remove']('active');
+  });
+  document.querySelectorAll('.mob').forEach(b=>b.classList.remove('active'));
+  if(p==='history') loadHistory();
+}
 
+/* ── COIN STRIP ── */
+const COINS=['BTCUSDT','BNBUSDT','SOLUSDT','ONDOUSDT','HYPEUSDT'];
+const LBL={BTCUSDT:'BTC',BNBUSDT:'BNB',SOLUSDT:'SOL',ONDOUSDT:'ONDO',HYPEUSDT:'HYPE'};
+document.getElementById('coin-strip').innerHTML=COINS.map(s=>
+  `<div class="coin-row" id="cr-${s}">
+    <div><div class="cn">${LBL[s]}</div><div class="cs">USDT PERP</div></div>
+    <div><div class="cp neu" id="cp-${s}" data-v="0">--</div><div class="cpct pos" id="cc-${s}">+0.00%</div></div>
+  </div>`).join('');
 
-def _okx_post(path: str, body: dict) -> dict:
-    try:
-        ts       = datetime.utcnow().strftime("%Y-%m-%dT%H:%M:%S.000Z")
-        body_str = json.dumps(body)
-        req      = urllib.request.Request(
-            "https://www.okx.com" + path,
-            data    = body_str.encode(),
-            headers = _sign(ts, "POST", path, body_str),
-            method  = "POST",
-        )
-        with urllib.request.urlopen(req, timeout=4) as r:
-            return json.loads(r.read())
-    except Exception as e:
-        _log(f"OKX POST hatası {path}: {e}", "error")
-        return {}
+function updateStrip(sym,price,pct){
+  const pEl=document.getElementById('cp-'+sym);
+  const cEl=document.getElementById('cc-'+sym);
+  const row=document.getElementById('cr-'+sym);
+  if(!pEl) return;
+  const prev=parseFloat(pEl.dataset.v||0);
+  pEl.dataset.v=price; pEl.textContent=fmtP(price,sym);
+  if(cEl&&pct!=null){cEl.textContent=(pct>=0?'+':'')+pct.toFixed(2)+'%'; cEl.className='cpct '+(pct>=0?'pos':'neg');}
+  if(row&&prev>0){row.classList.remove('flash-g','flash-r');void row.offsetWidth;row.classList.add(price>=prev?'flash-g':'flash-r');}
+}
 
+/* ── OKX WS ── */
+function connectWS(){
+  try{
+    const ws=new WebSocket('wss://ws.okx.com:8443/ws/v5/public');
+    ws.onopen=()=>{
+      ws.send(JSON.stringify({op:'subscribe',args:COINS.map(s=>({channel:'tickers',instId:s.replace('USDT','-USDT-SWAP')}))}));
+      ws.send(JSON.stringify({op:'subscribe',args:['BTC','BNB','SOL','ONDO','HYPE'].map(s=>({channel:'funding-rate',instId:s+'-USDT-SWAP'}))}));
+    };
+    ws.onmessage=e=>{
+      try{
+        const m=JSON.parse(e.data); if(!m.data) return;
+        if(m.arg?.channel==='tickers'){
+          m.data.forEach(d=>{
+            const sym=d.instId.replace('-USDT-SWAP','USDT');
+            const p=parseFloat(d.last)||0; const pct=parseFloat(d.sodUtc8)||0;
+            S.prices[sym]=p; updateStrip(sym,p,pct); liveCards(sym,p);
+          });
+        }
+        if(m.arg?.channel==='funding-rate'){
+          m.data.forEach(d=>{
+            const sym=d.instId.replace('-USDT-SWAP','').toUpperCase();
+            const r=parseFloat(d.fundingRate)*100;
+            const el=document.getElementById('fr-'+sym.toLowerCase());
+            if(el){el.textContent=(r>=0?'+':'')+r.toFixed(4)+'%'; el.style.color=r>0.01?'var(--green)':r<-0.01?'var(--red)':'var(--text2)';}
+          });
+        }
+      }catch(_){}
+    };
+    ws.onclose=()=>setTimeout(connectWS,3000);
+    ws.onerror=()=>{};
+  }catch(_){setTimeout(connectWS,5000);}
+}
 
-def fetch_ohlcv(inst_id: str, bar: str = "1m", limit: int = 100) -> Optional[pd.DataFrame]:
-    path = f"/api/v5/market/candles?instId={inst_id}&bar={bar}&limit={limit}"
-    try:
-        req = urllib.request.Request(
-            "https://www.okx.com" + path,
-            headers={"User-Agent": "CryptoBot/3.0"}
-        )
-        with urllib.request.urlopen(req, timeout=4) as r:
-            data = json.loads(r.read())
-        candles = data.get("data", [])
-        if not candles:
-            return None
-        df = pd.DataFrame(candles, columns=["ts","open","high","low","close","vol","volCcy","volCcyQuote","confirm"])
-        df = df[["ts","open","high","low","close","vol"]].copy()
-        df.columns = ["timestamp","open","high","low","close","volume"]
-        for col in ["open","high","low","close","volume"]:
-            df[col] = pd.to_numeric(df[col])
-        df = df.iloc[::-1].reset_index(drop=True)
-        return df
-    except Exception as e:
-        _log(f"OHLCV hatası {inst_id}: {e}", "warning")
-        return None
+/* ── SSE ── */
+function connectSSE(){
+  const es=new EventSource(API+'/api/stream');
+  es.onmessage=e=>{
+    try{
+      const d=JSON.parse(e.data);
+      const sigs=d.signals||d.botStatus?.signals||{};
+      if(Object.keys(sigs).length){S.signals=sigs; if(curPage==='signals')renderSignals();}
+      // Scanner scores
+      const sc=d.scanner_scores||d.botStatus?.scanner_scores;
+      if(sc&&Object.keys(sc).length){ S.scannerScores=sc; if(curPage==='signals')renderScannerScores(); }
+      const reg=d.regime||d.botStatus?.regime||{};
+      if(Object.keys(reg).length){S.regime=reg; renderRegime();}
+      const logs=d.botStatus?.logs||[];
+      if(logs.length){appendLogs(logs.filter(l=>!S.logs.includes(l))); S.logs=logs;}
+      if(d.stats?.totalBalance){
+        const b=d.stats.totalBalance; S.balance=b;
+        document.getElementById('t-bal').textContent='$'+b.toFixed(2);
+        document.getElementById('r-equity').textContent='$'+b.toFixed(2);
+      }
+      if(d.botStatus?.loop_count!=null) document.getElementById('r-loop').textContent='#'+d.botStatus.loop_count;
+      if(d.botStatus?.last_scan){const t=new Date(d.botStatus.last_scan);if(!isNaN(t))document.getElementById('r-scan').textContent=[t.getHours(),t.getMinutes(),t.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':');}
+      if(d.gridState&&Object.keys(d.gridState).length) renderGrid(d.gridState);
+    }catch(_){}
+  };
+  es.onerror=()=>{document.getElementById('live-txt').textContent='BAĞLANIYOR';es.close();setTimeout(connectSSE,4000);};
+  es.onopen=()=>document.getElementById('live-txt').textContent='CANLI';
+}
 
-
-def get_balance() -> float:
-    if not OKX_KEY:
-        return 10000.0
-    data = _okx_get("/api/v5/account/balance?ccy=USDT")
-    try:
-        return float(data["data"][0]["details"][0]["availBal"])
-    except:
-        return 0.0
-
-
-def get_open_positions() -> list:
-    if not OKX_KEY:
-        return []
-    data      = _okx_get("/api/v5/account/positions?instType=SWAP")
-    positions = []
-    for p in data.get("data", []):
-        pos_val   = p.get("pos", "0")
-        long_qty  = p.get("longQty", "0")
-        short_qty = p.get("shortQty", "0")
-
-        qty = float(pos_val or 0)
-        if qty == 0 and float(long_qty or 0) > 0:
-            qty = float(long_qty)
-        elif qty == 0 and float(short_qty or 0) > 0:
-            qty = -float(short_qty)
-        if qty == 0:
-            continue
-
-        inst_id  = p.get("instId", "")
-        pos_side = p.get("posSide", "")
-
-        if pos_side == "long":
-            side = "long"
-        elif pos_side == "short":
-            side = "short"
-        else:
-            side = "long" if qty > 0 else "short"
-
-        entry = float(p.get("avgPx", 0))
-        sym   = COIN_MAP.get(inst_id, inst_id)
-
-        positions.append({
-            "instId":   inst_id,
-            "side":     side,
-            "qty":      abs(qty),
-            "entry":    entry,
-            "pnl":      float(p.get("upl", 0)),
-            "leverage": int(float(p.get("lever", LEVERAGE))),
-            "avgPx":    entry,
-            "pos":      abs(qty),
-        })
-
-        state_key       = sym + ("_short" if side == "short" else "")
-        # Deploy sonrası _bot_opened_positions sıfırlanır — engine_state veya tüm pozisyonlar bot'a ait say
-        is_bot_position = (inst_id in _bot_opened_positions 
-                          or state_key in engine_state["open_positions"]
-                          or engine_state.get("open_positions", {}).get(sym) is not None)
-        # Eğer bot pozisyonu ise _bot_opened_positions'a ekle (restart recovery)
-        if is_bot_position and inst_id not in _bot_opened_positions:
-            _bot_opened_positions.add(inst_id)
-
-        if is_bot_position:
-            with _lock:
-                if state_key not in engine_state["open_positions"] and entry > 0:
-                    try:
-                        sl_mult = float(os.getenv("SL_ATR_MULT", "2.0"))
-                        sl_pct  = 0.015 * sl_mult
-                        if side == "long":
-                            sl = entry * (1 - sl_pct)
-                            tp = entry * (1 + sl_pct * 2)
-                        else:
-                            sl = entry * (1 + sl_pct)
-                            tp = entry * (1 - sl_pct * 2)
-                        engine_state["open_positions"][state_key] = {
-                            "stop_loss": sl, "take_profit": tp,
-                            "entry_price": entry, "side": side,
-                            "inst_id": inst_id, "profit_stage": 0,
-                            "half_closed": False, "recovered": True,
-                        }
-                        _log(f"🔄 {sym} ({side}) bot pozisyonu kurtarıldı: giriş=${entry:.4f} SL=${sl:.4f}")
-                    except Exception as e:
-                        _log(f"⚠️ {sym} pozisyon kayıt hatası: {e}", "warning")
-        else:
-            _log(f"👤 {sym} manuel pozisyon — dokunulmayacak (giriş:${entry:.4f})")
-
-    return positions
-
-
-def set_leverage(inst_id: str, lev: int):
-    if not OKX_KEY or PAPER_TRADING:
-        return
-    _okx_post("/api/v5/account/set-leverage", {
-        "instId": inst_id, "lever": str(lev), "mgnMode": "cross"
+/* ── POLL POSITIONS ── */
+function poll(){
+  fetch(API+'/api/positions')
+    .then(r=>{
+      const ct=r.headers.get('content-type')||'';
+      if(!ct.includes('json'))throw new Error('Not JSON');
+      return r.json();
     })
-
-
-def get_contract_info(inst_id: str) -> dict:
-    if not hasattr(get_contract_info, "_cache"):
-        get_contract_info._cache = {}
-    if inst_id not in get_contract_info._cache:
-        info_data = _okx_get(f"/api/v5/public/instruments?instType=SWAP&instId={inst_id}")
-        try:
-            d = info_data["data"][0]
-            get_contract_info._cache[inst_id] = {
-                "ct_val":  float(d.get("ctVal",  0.01)),
-                "lot_sz":  float(d.get("lotSz",  1)),
-                "tick_sz": float(d.get("tickSz", 0.01)),
-                "min_sz":  float(d.get("minSz",  1)),
-            }
-        except:
-            get_contract_info._cache[inst_id] = {"ct_val": 0.01, "lot_sz": 1, "tick_sz": 0.01, "min_sz": 1}
-    return get_contract_info._cache[inst_id]
-
-
-def round_price(price: float, tick_sz: float) -> str:
-    if tick_sz <= 0:
-        return f"{price:.4f}"
-    decimals = max(0, -int(f"{tick_sz:e}".split("e")[1]))
-    return f"{round(price / tick_sz) * tick_sz:.{decimals}f}"
-
-
-def place_order(inst_id: str, side: str, notional: float, price: float,
-                sl_price: float = 0.0, tp1_price: float = 0.0, tp2_price: float = 0.0) -> bool:
-    if PAPER_TRADING:
-        _log(f"[PAPER] {side.upper()} {inst_id} notional=${notional:.0f} @ ${price:.4f} | SL=${sl_price:.4f} TP1=${tp1_price:.4f} TP2=${tp2_price:.4f}")
-        return True
-    if not OKX_KEY:
-        _log("API anahtarı yok, emir gönderilemedi", "error")
-        return False
-
-    info         = get_contract_info(inst_id)
-    ct_val       = info["ct_val"]
-    tick_sz      = info["tick_sz"]
-    qty_coin     = notional / price
-    qty_contract = max(info["min_sz"], round(qty_coin / ct_val))
-    pos_side     = "long" if side == "buy" else "short"
-
-    result = _okx_post("/api/v5/trade/order", {
-        "instId": inst_id, "tdMode": "cross", "side": side,
-        "posSide": pos_side, "ordType": "market", "sz": str(int(qty_contract)),
+    .then(data=>{
+      /* mock_api.py returns plain JSON array */
+      const pos=Array.isArray(data)?data:(Array.isArray(data.positions)?data.positions:[]);
+      S.positions=pos;
+      renderPositions();
     })
-    ok = result.get("code") == "0"
-    if not ok:
-        err = result.get("data", [{}])[0].get("sMsg") or result.get("msg", "?")
-        _log(f"❌ Emir reddedildi: {inst_id} → {err} (code:{result.get('code')})", "error")
-        return False
+    .catch(e=>console.warn('[CB] poll:',e.message));
+}
 
-    order_id = result.get("data", [{}])[0].get("ordId", "")
-    _log(f"✅ {side.upper()} {inst_id} {int(qty_contract)} kontrat | ordId={order_id}")
+/* ── RENDER POSITIONS ── */
+function icn(sym){
+  const s=sym.toUpperCase();
+  if(s.includes('BTC'))return 'ic-btc';
+  if(s.includes('BNB'))return 'ic-bnb';
+  if(s.includes('SOL'))return 'ic-sol';
+  if(s.includes('ONDO'))return 'ic-ondo';
+  if(s.includes('HYPE'))return 'ic-hype';
+  return 'ic-def';
+}
 
-    if sl_price > 0:
-        sl_side   = "sell" if pos_side == "long" else "buy"
-        sl_result = _okx_post("/api/v5/trade/order-algo", {
-            "instId": inst_id, "tdMode": "cross", "side": sl_side,
-            "posSide": pos_side, "ordType": "conditional",
-            "sz": str(int(qty_contract)),
-            "slTriggerPx": round_price(sl_price, tick_sz),
-            "slOrdPx": "-1", "slTriggerPxType": "mark",
-        })
-        if sl_result.get("code") == "0":
-            _log(f"🛡️ SL ayarlandı: ${sl_price:.4f}")
-        else:
-            _log(f"⚠️ SL ayarlanamadı: {sl_result.get('msg','?')}", "warning")
+function renderPositions(){
+  const grid=document.getElementById('pos-grid');
+  const cnt=S.positions.length;
+  document.getElementById('t-pos').textContent=cnt;
+  document.getElementById('r-openpos').textContent=cnt;
+  if(!cnt){
+    grid.innerHTML='<div class="empty"><div class="empty-icon">◈</div><div class="empty-text">Açık pozisyon yok</div></div>';
+    setTopPnL(0); return;
+  }
+  grid.innerHTML=S.positions.map(buildCard).join('');
+  refreshTotalPnL();
+  const used=S.positions.reduce((a,p)=>(+p.notional||0)/(+p.leverage||10)+a,0);
+  document.getElementById('r-used').textContent='$'+used.toFixed(0);
+}
 
-    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.004"))
-    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.0025"))
-    trail_active_px = price * (1 + TRAIL_ACTIVATION_PCT) if pos_side == "long" else price * (1 - TRAIL_ACTIVATION_PCT)
-    trail_side      = "sell" if pos_side == "long" else "buy"
+function buildCard(p){
+  const sym  = String(p.symbol||'');
+  const side = String(p.side||'long');
+  const entry= +p.entry_price||0;
+  const cur  = S.prices[sym]||+p.current_price||entry;
+  const sl   = +p.stop_loss||0;
+  const tp   = +p.take_profit||0;
+  const not  = +p.notional||0;
+  const lev  = +p.leverage||10;
+  const mgn  = not>0?not/lev:0;
+  const qty  = entry>0&&not>0?not/entry:0;
+  let pnl,pct;
+  if(qty>0&&cur>0){pnl=side==='long'?(cur-entry)*qty:(entry-cur)*qty; pct=mgn>0?pnl/mgn*100:0;}
+  else{pnl=+p.pnl||0; pct=+p.pnl_percent||0;}
+  const pp=pnl>=0;
+  let bar=50;
+  if(sl>0&&tp>0&&cur>0){const rng=Math.abs(tp-sl);if(rng>0)bar=side==='long'?Math.max(0,Math.min(100,(cur-sl)/rng*100)):Math.max(0,Math.min(100,(sl-cur)/rng*100));}
+  const bc=bar<30?'var(--red)':bar>70?'var(--green)':'var(--yellow)';
+  const disp=sym.replace('USDT','').replace('-USDT-SWAP','');
+  const strat=p.strategy_name||'Pullback'; const isMan=!!p.is_adopted;
+  return `<div class="pos-card ${side}-card">
+  <div class="pc-head">
+    <div class="pc-left">
+      <div class="pc-icon ${icn(sym)}">${disp.substring(0,4)}</div>
+      <div>
+        <div class="pc-sym">${disp}<span style="font-size:10px;color:var(--text3);font-weight:400">/USDT</span></div>
+        <div class="pc-meta">${isMan?'👤 Manuel':strat} · ${lev}x${p.score?' · Skor:'+p.score:''}</div>
+      </div>
+      <span class="pc-dir dir-${side}">${side==='long'?'LONG':'SHORT'}</span>
+    </div>
+    <div class="pc-pnl">
+      <div class="pc-pnl-val ${pp?'pos':'neg'}" id="pnl-${sym}">${pp?'+':'-'}$${Math.abs(pnl).toFixed(2)}</div>
+      <div class="pc-pnl-pct ${pp?'pos':'neg'}" id="pp-${sym}">${pp?'+':''}${pct.toFixed(2)}%</div>
+    </div>
+  </div>
+  <div class="pc-stats">
+    <div class="pc-stat"><div class="psl">Giriş</div><div class="psv">${fmtP(entry,sym)}</div></div>
+    <div class="pc-stat"><div class="psl">Güncel</div><div class="psv" id="cp2-${sym}">${fmtP(cur,sym)}</div></div>
+    <div class="pc-stat"><div class="psl">SL</div><div class="psv" style="color:var(--red)">${sl?fmtP(sl,sym):'--'}</div></div>
+    <div class="pc-stat"><div class="psl">TP</div><div class="psv" style="color:var(--green)">${tp?fmtP(tp,sym):'--'}</div></div>
+  </div>
+  <div class="pc-bar">
+    <div class="bl">
+      <span style="color:var(--red)">SL ${sl?fmtP(sl,sym):'--'}</span>
+      <span style="color:var(--text2)">${fmtP(cur,sym)}</span>
+      <span style="color:var(--green)">TP ${tp?fmtP(tp,sym):'--'}</span>
+    </div>
+    <div class="bar-outer">
+      <div class="bar-fill-r" style="width:${Math.max(0,50-bar)*2}%"></div>
+      <div class="bar-fill-g" style="width:${Math.max(0,bar-50)*2}%"></div>
+      <div class="bar-cur" style="left:${bar}%;background:${bc};box-shadow:0 0 6px ${bc}"></div>
+    </div>
+    <div class="bc">
+      <span>Marjin: $${mgn.toFixed(0)}</span>
+      <span style="color:${bc}">${bar.toFixed(0)}% TP yönünde</span>
+      <span>$${not.toFixed(0)}</span>
+    </div>
+  </div>
+</div>`;
+}
 
-    trail_result = _okx_post("/api/v5/trade/order-algo", {
-        "instId": inst_id, "tdMode": "cross", "side": trail_side,
-        "posSide": pos_side, "ordType": "move_order_stop",
-        "sz": str(int(qty_contract)),
-        "activePx": round_price(trail_active_px, tick_sz),
-        "callbackRatio": str(TRAIL_CALLBACK_PCT),
+function liveCards(sym,price){
+  S.positions.forEach(p=>{
+    if(p.symbol!==sym) return;
+    const entry=+p.entry_price||0; const not=+p.notional||0; const lev=+p.leverage||10;
+    const mgn=not>0?not/lev:0; const side=p.side||'long';
+    const qty=entry>0&&not>0?not/entry:0;
+    const pnl=qty>0?(side==='long'?(price-entry)*qty:(entry-price)*qty):+p.pnl||0;
+    const pct=mgn>0?pnl/mgn*100:0; const pp=pnl>=0;
+    const pEl=document.getElementById('pnl-'+sym);
+    const ppEl=document.getElementById('pp-'+sym);
+    const cpEl=document.getElementById('cp2-'+sym);
+    if(pEl){pEl.textContent=(pp?'+':'-')+'$'+Math.abs(pnl).toFixed(2); pEl.className='pc-pnl-val '+(pp?'pos':'neg');}
+    if(ppEl){ppEl.textContent=(pp?'+':'')+pct.toFixed(2)+'%'; ppEl.className='pc-pnl-pct '+(pp?'pos':'neg');}
+    if(cpEl) cpEl.textContent=fmtP(price,sym);
+  });
+  refreshTotalPnL();
+}
+
+function refreshTotalPnL(){
+  let total=0;
+  S.positions.forEach(p=>{
+    const sym=p.symbol||''; const entry=+p.entry_price||0;
+    const wsP=S.prices[sym]||0; const not=+p.notional||0; const side=p.side||'long';
+    if(entry>0&&not>0&&wsP>0){const q=not/entry; total+=side==='long'?(wsP-entry)*q:(entry-wsP)*q;}
+    else total+=+p.pnl||0;
+  });
+  setTopPnL(total);
+}
+
+function setTopPnL(total){
+  const pp=total>=0; const str=(pp?'+':'')+`$${total.toFixed(2)}`;
+  const tEl=document.getElementById('t-pnl'); const rEl=document.getElementById('r-fpnl');
+  if(tEl){tEl.textContent=str; tEl.className='tm-val '+(pp?'pos':'neg');}
+  if(rEl){rEl.textContent=str; rEl.style.color=pp?'var(--green)':'var(--red)';}
+}
+
+/* ── SİNYAL BAR PANELİ ── */
+const MIN_SC = 6; const MAX_SC = 11; const THRESH_PCT = (MIN_SC/MAX_SC*100).toFixed(1);
+let _selCoin = null;
+let _sigCountdown = 60;
+
+function renderSignals(){
+  const sigs = S.signals;
+  const scanner = S.scannerScores || {};
+  const allEntries = {};
+
+  // Merge signals + scanner
+  Object.entries(sigs).forEach(([sym, sig]) => {
+    const inst = sym.replace('USDT','-USDT-SWAP');
+    allEntries[inst] = allEntries[inst] || {};
+    allEntries[inst].sig = sig;
+    allEntries[inst].name = sym.replace('USDT','');
+  });
+  Object.entries(scanner).forEach(([inst, sc]) => {
+    allEntries[inst] = allEntries[inst] || {};
+    allEntries[inst].sc = sc;
+    allEntries[inst].name = inst.replace('-USDT-SWAP','');
+  });
+
+  const entries = Object.entries(allEntries);
+  if(!entries.length){
+    document.getElementById('sig-bar-list').innerHTML =
+      '<div class="empty"><div class="empty-icon">⟡</div><div class="empty-text">Sinyal bekleniyor...</div></div>';
+    return;
+  }
+
+  // Sort by signal score desc, then scanner score
+  entries.sort((a,b)=>{
+    const aS = a[1].sig?.long?.score||0; const bS = b[1].sig?.long?.score||0;
+    if(bS!==aS) return bS-aS;
+    return (b[1].sc?.score||0)-(a[1].sc?.score||0);
+  });
+
+  let buyCount = 0;
+  const html = entries.map(([inst, data]) => {
+    const name  = data.name || inst.replace('-USDT-SWAP','');
+    const sig   = data.sig || {};
+    const sc    = data.sc  || {};
+    const ls    = sig.long || {};
+    const sigSc = ls.score || 0;
+    const scSc  = sc.score || 0;
+    const isBuy = ls.enter && sigSc >= MIN_SC;
+    if(isBuy) buyCount++;
+
+    const dispSc  = sigSc || scSc;
+    const dispMax = sigSc ? MAX_SC : 10;
+    const pct     = Math.min(100, Math.round(dispSc/dispMax*100));
+    const thresh  = sigSc ? THRESH_PCT : (4/10*100).toFixed(1);
+
+    const barColor = isBuy ? 'var(--green)' : pct>=60 ? 'var(--yellow)' : 'var(--text3)';
+    const rsiVal   = sc.rsi || ls.rsi || 0;
+    const rsiColor = rsiVal>70 ? 'var(--red)' : rsiVal<30 ? 'var(--yellow)' : 'var(--text3)';
+    const rowCls   = isBuy ? 'sbar-row sbar-buy' : (_selCoin===inst ? 'sbar-row sbar-sel' : 'sbar-row');
+
+    return `<div class="${rowCls}" id="sbar-${inst}" onclick="selectSig('${inst}')">
+      <div class="sbar-name">${name}</div>
+      <div class="sbar-track">
+        <div class="sbar-thresh" style="left:${thresh}%"></div>
+        <div class="sbar-fill" id="sbf-${inst}" style="width:0%;background:${barColor}"></div>
+      </div>
+      <div class="sbar-score" style="color:${barColor}">${dispSc}/${dispMax}</div>
+      <span class="sbar-badge ${isBuy?'sb-buy':'sb-hold'}">${isBuy?'BUY':'HOLD'}</span>
+      <div class="sbar-rsi" style="color:${rsiColor}">${rsiVal?'RSI '+rsiVal.toFixed(0):''}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('sig-bar-list').innerHTML = html;
+  document.getElementById('sig-buy-cnt').textContent = buyCount;
+  document.getElementById('sig-scan-cnt').textContent = entries.length+' coin';
+
+  // Animate bars
+  requestAnimationFrame(()=>{
+    entries.forEach(([inst, data])=>{
+      const ls = data.sig?.long||{};
+      const sc = data.sc||{};
+      const dispSc  = ls.score||sc.score||0;
+      const dispMax = ls.score ? MAX_SC : 10;
+      const pct = Math.min(100, Math.round(dispSc/dispMax*100));
+      const el = document.getElementById('sbf-'+inst);
+      if(el) setTimeout(()=>{ el.style.width=pct+'%'; }, 60);
+    });
+  });
+
+  // Timestamp
+  const n=new Date();
+  document.getElementById('sig-updated').textContent =
+    [n.getHours(),n.getMinutes(),n.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':')+' güncellendi';
+
+  // Re-render scanner mini cards
+  renderScannerScores();
+}
+
+function selectSig(inst){
+  _selCoin = inst;
+  document.querySelectorAll('.sbar-row').forEach(r=>{
+    r.classList.remove('sbar-sel');
+    if(r.id==='sbar-'+inst && !r.classList.contains('sbar-buy')) r.classList.add('sbar-sel');
+  });
+
+  const sc   = (S.scannerScores||{})[inst]||{};
+  const name = inst.replace('-USDT-SWAP','');
+  const sym  = name+'USDT';
+  const sig  = S.signals[sym]||{};
+  const ls   = sig.long||{};
+
+  const det = document.getElementById('sig-detail');
+  det.style.display = 'block';
+  document.getElementById('sig-det-coin').textContent = name+'/USDT';
+
+  const badge = document.getElementById('sig-det-badge');
+  if(ls.enter){ badge.textContent='🟢 BUY'; badge.style.cssText='font-size:10px;padding:3px 10px;border-radius:3px;font-weight:700;background:rgba(0,255,136,.12);color:var(--green)'; }
+  else { badge.textContent='⏸ HOLD'; badge.style.cssText='font-size:10px;padding:3px 10px;border-radius:3px;font-weight:700;background:rgba(68,85,119,.2);color:var(--text3)'; }
+
+  const grid = document.getElementById('sig-det-grid');
+  const items = [
+    {l:'Sinyal Skoru', v:ls.score?(ls.score+'/'+MAX_SC):'--', c:ls.score>=MIN_SC?'var(--green)':'var(--text)'},
+    {l:'Scanner Skoru', v:(sc.score||0)+'/10', c:(sc.score||0)>=7?'var(--green)':'var(--text)'},
+    {l:'RSI', v:sc.rsi?sc.rsi.toFixed(1):'--', c:sc.rsi>70?'var(--red)':sc.rsi<30?'var(--yellow)':'var(--text)'},
+    {l:'Giriş', v:ls.entry?fmtP(ls.entry,sym):'--', c:'var(--text)'},
+    {l:'Stop Loss', v:ls.sl?fmtP(ls.sl,sym):'--', c:'var(--red)'},
+    {l:'Take Profit', v:ls.tp?fmtP(ls.tp,sym):'--', c:'var(--green)'},
+  ];
+  grid.innerHTML = items.map(({l,v,c})=>`
+    <div style="background:var(--bg2);border-radius:4px;padding:7px 10px">
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">${l}</div>
+      <div style="font-size:13px;font-weight:600;margin-top:3px;color:${c}">${v}</div>
+    </div>`).join('');
+
+  const reason = ls.reason||sc.reason||'';
+  const inds = [];
+  [['ST↑(+2)','ST↑',true],['ST↓','ST↓',false],
+   ['EMA↑↑(+2)','EMA↑↑',true],['EMA↑(+1)','EMA↑',true],['EMA↓','EMA↓',false],
+   ['MACD↑(+2)','MACD↑',true],['MACD+(+1)','MACD+',true],['MACD↓','MACD↓',false],
+   ['P>EMA21(+1)','P>EMA21',true],['VWAP(+1)','VWAP',true],['VOL↑','VOL↑',true],
+  ].forEach(([pat,lbl,ok])=>{
+    if(reason.includes(pat)) inds.push({l:lbl,ok});
+  });
+  document.getElementById('sig-det-inds').innerHTML = inds.map(i=>
+    `<span style="font-size:9px;padding:2px 7px;border-radius:3px;background:${i.ok?'rgba(0,255,136,.1)':'rgba(68,85,119,.2)'};color:${i.ok?'var(--green)':'var(--text3)'}">${i.l}</span>`
+  ).join('');
+}
+
+function renderScannerScores(){
+  const el = document.getElementById('sig-scanner-grid');
+  if(!el||!S.scannerScores) return;
+  const sorted = Object.entries(S.scannerScores).sort((a,b)=>(b[1].score||0)-(a[1].score||0));
+  if(!sorted.length) return;
+  el.innerHTML = sorted.map(([inst,sc])=>{
+    const name = inst.replace('-USDT-SWAP','');
+    const score = sc.score||0;
+    const color = score>=7?'var(--green)':score>=5?'var(--yellow)':'var(--text3)';
+    return `<div class="sc-mini" onclick="selectSig('${inst}')">
+      <div><div class="sc-mini-name">${name}</div><div class="sc-mini-rsi">${sc.rsi?'RSI '+sc.rsi.toFixed(0):''}</div></div>
+      <div class="sc-mini-score" style="color:${color}">${score}/10</div>
+    </div>`;
+  }).join('');
+}
+/* ── REGIME ── */
+function renderRegime(){
+  const r=S.regime; if(!r||!r.name) return;
+  const name=r.name;
+  const icons={TREND_UP:'↑ YUKARI',TREND_DOWN:'↓ AŞAĞI',RANGE:'↔ YATAY',HIGH_VOL:'⚡ YÜK.VOL',NO_TRADE:'✕ DUR'};
+  const label=icons[name]||name;
+  const cls=name.includes('UP')?'rn-up':name.includes('DOWN')?'rn-down':name.includes('RANGE')?'rn-range':'rn-nt';
+  const bColor=name.includes('UP')?'var(--green)':name.includes('DOWN')?'var(--red)':'var(--yellow)';
+  const conf=Math.round((r.confidence||0)*100);
+  document.getElementById('r-regime').innerHTML=`<span class="${cls}">${label}</span>`;
+  document.getElementById('t-reg').textContent=label;
+  // Sinyal sayfası rejim kutusu
+  const sigReg=document.getElementById('sig-regime');
+  if(sigReg){ sigReg.textContent=label; sigReg.style.color=name.includes('UP')?'var(--green)':name.includes('DOWN')?'var(--red)':'var(--yellow)'; }
+  document.getElementById('r-conf').textContent=conf+'% güven';
+  document.getElementById('r-adx').textContent=r.adx_1h!=null?(+r.adx_1h).toFixed(1):'--';
+  document.getElementById('r-mult').textContent='×'+(r.pos_mult||1);
+  const bar=document.getElementById('r-bar');
+  if(bar){bar.style.width=conf+'%'; bar.style.background=bColor;}
+}
+
+/* ── GRID ── */
+function renderGrid(grid){
+  const el=document.getElementById('r-grid'); if(!el) return;
+  if(!grid||!Object.keys(grid).length){el.innerHTML='<div style="color:var(--text3);font-size:10px">--</div>';return;}
+  el.innerHTML=Object.entries(grid).map(([k,g])=>
+    `<div style="margin-bottom:8px">
+      <div style="font-size:11px;font-weight:600;margin-bottom:3px">${k}</div>
+      <div style="font-size:10px;color:var(--text2)">Alış:${g.buy_orders} Satış:${g.sell_orders}
+        <span style="color:${g.total_pnl>=0?'var(--green)':'var(--red)'};margin-left:8px">PnL:${g.total_pnl>=0?'+':''}$${(g.total_pnl||0).toFixed(4)}</span>
+      </div>
+    </div>`
+  ).join('');
+}
+
+/* ── 24H STATS ── */
+function load24h(){
+  fetch(API+'/api/trades')
+    .then(r=>r.json())
+    .then(data=>{
+      const all=Array.isArray(data)?data:(data.trades||[]);
+      const now=Date.now();
+      const since=now-24*60*60*1000;
+      // Filter last 24h closed trades
+      const trades=all.filter(t=>{
+        const ts=t.closed_at||t.opened_at||t.time||'';
+        if(!ts) return false;
+        const d=new Date(ts);
+        return !isNaN(d)&&d.getTime()>=since&&(t.status==='closed'||t.pnl!==0);
+      });
+      const total=trades.length;
+      const wins=trades.filter(t=>(+t.pnl||0)>0).length;
+      const losses=total-wins;
+      const netPnl=trades.reduce((a,t)=>a+(+t.pnl||0),0);
+      const avgPnl=total>0?netPnl/total:0;
+      const wr=total>0?Math.round(wins/total*100):0;
+      const wpct=total>0?Math.round(wins/total*100):0;
+      const lpct=100-wpct;
+      const pp=netPnl>=0;
+
+      // Update DOM
+      const pEl=document.getElementById('s24-pnl');
+      if(pEl){pEl.textContent=(pp?'+':'')+`$${Math.abs(netPnl).toFixed(2)}`;pEl.style.color=pp?'var(--green)':'var(--red)';}
+      const avgEl=document.getElementById('s24-avg');
+      if(avgEl) avgEl.textContent=`Ort: ${avgPnl>=0?'+':''}$${avgPnl.toFixed(2)} / işlem`;
+      const wrEl=document.getElementById('s24-wr');
+      if(wrEl){wrEl.textContent=wr+'%'; wrEl.style.color=wr>=50?'var(--green)':'var(--red)';}
+      setText('s24-total',total);
+      setText('s24-wins',wins);
+      setText('s24-losses',losses);
+      const wb=document.getElementById('s24-wbar'); if(wb) wb.style.width=wpct+'%';
+      const lb=document.getElementById('s24-lbar'); if(lb) lb.style.width=lpct+'%';
+      setText('s24-wpct',wpct+'%');
+      setText('s24-lpct',lpct+'%');
+      // Updated time
+      const upEl=document.getElementById('s24-updated');
+      if(upEl){const n=new Date();upEl.textContent=[n.getHours(),n.getMinutes()].map(x=>String(x).padStart(2,'0')).join(':')+'\'de güncellendi';}
+      // Last 5 trades list
+      const listEl=document.getElementById('s24-trades');
+      if(listEl){
+        const recent=trades.slice(0,5);
+        if(!recent.length){listEl.innerHTML='<div style="color:var(--text3);font-size:10px;padding:4px 0">24s içinde işlem yok</div>';return;}
+        listEl.innerHTML=recent.map(t=>{
+          const pnl=+t.pnl||0; const pp2=pnl>=0;
+          const sym=(t.symbol||'').replace('USDT','');
+          const ts=fmtD(t.closed_at||t.opened_at||'');
+          return `<div class="stat24-trade-row">
+            <span class="str-sym">${sym}</span>
+            <span class="str-dir" style="color:${t.side==='long'?'var(--green)':'var(--red)'}">${(t.side||'').toUpperCase()}</span>
+            <span class="str-pnl" style="color:${pp2?'var(--green)':'var(--red)'}">${pp2?'+':''}$${Math.abs(pnl).toFixed(2)}</span>
+            <span class="str-time">${ts}</span>
+          </div>`;
+        }).join('');
+      }
     })
-    if trail_result.get("code") == "0":
-        _log(f"🎯 Trailing Stop: aktif=${trail_active_px:.4f} | geri=%{TRAIL_CALLBACK_PCT*100:.1f}")
-    else:
-        _log(f"⚠️ Trailing Stop ayarlanamadı: {trail_result.get('msg','?')}", "warning")
-        if tp1_price > 0:
-            tp1_qty  = max(1, int(qty_contract * 0.50))
-            tp1_side = "sell" if pos_side == "long" else "buy"
-            _okx_post("/api/v5/trade/order-algo", {
-                "instId": inst_id, "tdMode": "cross", "side": tp1_side,
-                "posSide": pos_side, "ordType": "conditional", "sz": str(tp1_qty),
-                "tpTriggerPx": round_price(tp1_price, tick_sz),
-                "tpOrdPx": "-1", "tpTriggerPxType": "mark",
-            })
-        if tp2_price > 0:
-            tp2_qty = int(qty_contract) - max(1, int(qty_contract * 0.50))
-            if tp2_qty > 0:
-                tp2_side = "sell" if pos_side == "long" else "buy"
-                _okx_post("/api/v5/trade/order-algo", {
-                    "instId": inst_id, "tdMode": "cross", "side": tp2_side,
-                    "posSide": pos_side, "ordType": "conditional", "sz": str(tp2_qty),
-                    "tpTriggerPx": round_price(tp2_price, tick_sz),
-                    "tpOrdPx": "-1", "tpTriggerPxType": "mark",
-                })
-    return True
-
-
-def close_position(inst_id: str, side: str, qty: float):
-    if PAPER_TRADING:
-        _log(f"[PAPER] KAPAT {inst_id} {side} qty={qty:.4f}")
-        return True
-    if not OKX_KEY:
-        return False
-
-    close_side = "sell" if side == "long" else "buy"
-    info_data  = _okx_get(f"/api/v5/public/instruments?instType=SWAP&instId={inst_id}")
-    try:
-        ct_val = float(info_data["data"][0]["ctVal"])
-    except:
-        ct_val = 0.01
-
-    pos_data = _okx_get(f"/api/v5/account/positions?instId={inst_id}")
-    try:
-        sz = pos_data["data"][0]["pos"]
-    except:
-        sz = str(round(qty / ct_val))
-
-    result = _okx_post("/api/v5/trade/order", {
-        "instId": inst_id, "tdMode": "cross", "side": close_side,
-        "posSide": side, "ordType": "market", "sz": str(abs(int(float(sz)))),
-    })
-    ok = result.get("code") == "0"
-    if ok:
-        _log(f"✅ Pozisyon kapatıldı: {inst_id} {side}")
-    else:
-        _log(f"❌ Kapatma başarısız: {inst_id} → {result.get('msg','?')}", "error")
-    return ok
-
-
-def _calc_rsi(df: pd.DataFrame, period: int = 14) -> float:
-    try:
-        close = df["close"]
-        delta = close.diff()
-        gain  = delta.where(delta > 0, 0).ewm(span=period, adjust=False).mean()
-        loss  = (-delta.where(delta < 0, 0)).ewm(span=period, adjust=False).mean()
-        rs    = gain / loss.replace(0, 1e-10)
-        return float(100 - (100 / (1 + rs.iloc[-1])))
-    except:
-        return 50.0
-
-
-# ── Sinyal Motoru ─────────────────────────────────────────────────────────────
-
-def run_signals(positions: list) -> dict:
-    from pullback_long  import PullbackLongStrategy
-    from pullback_short import PullbackShortStrategy
-
-    long_strat  = PullbackLongStrategy(min_score=LONG_MIN_SCORE)
-    short_strat = PullbackShortStrategy(min_score=LONG_MIN_SCORE)
-
-    open_syms = {p["instId"] for p in positions if p["instId"] in _bot_opened_positions}
-    signals   = {}
-
-    active_coins = get_active_coins()
-    _log(f"[SIGNALS] Taranan coinler: {[c.replace('-USDT-SWAP','') for c in active_coins]}")
-    for inst_id in active_coins:
-        sym = COIN_MAP.get(inst_id, inst_id.replace("-USDT-SWAP","USDT").replace("-",""))
-        try:
-            df = fetch_ohlcv(inst_id, bar="5m", limit=100)
-        except Exception as _fe:
-            _log(f"[SIGNALS] {sym} veri çekme hatası: {_fe}", "warning")
-            continue
-        if df is None or len(df) < 55:
-            _log(f"[SIGNALS] {sym}: yetersiz 5m veri ({len(df) if df is not None else 0} bar) — atlanıyor")
-            continue
-        _log(f"[SIGNALS] {sym}: {len(df)} bar alındı, sinyal hesaplanıyor...")
-
-        try:
-            df_1h = fetch_ohlcv(inst_id, bar="1H", limit=60)
-        except Exception:
-            df_1h = None
-        hour_utc = datetime.now(timezone.utc).hour
-        
-        try:
-            long_res  = long_strat.generate(df, symbol=sym, hour_utc=hour_utc,
-                                            df_5m=None, df_15m=None, df_1h=df_1h)
-        except Exception as _le:
-            _log(f"[SIGNALS] {sym} long hata: {_le}", "warning")
-            from pullback_long import SignalResult as _SR; long_res = _SR()
-
-        try:
-            short_res = short_strat.generate(df, symbol=sym, hour_utc=hour_utc)
-        except Exception as _se:
-            _log(f"[SIGNALS] {sym} short hata: {_se}", "warning")
-            from pullback_long import SignalResult as _SR; short_res = _SR()
-
-        try:
-            rsi_val = _calc_rsi(df)
-            signals[sym] = {
-                "inst_id":     inst_id,
-                "rsi":         round(float(rsi_val), 1),
-                "df_1h":       None,
-                "long":  {
-                    "score":  int(long_res.score),
-                    "enter":  bool(long_res.should_enter),
-                    "sl":     float(long_res.stop_loss or 0),
-                    "tp":     float(long_res.take_profit or 0),
-                    "entry":  float(long_res.entry_price or 0),
-                    "reason": str(long_res.reason or "")[:100],
-                    "rsi":    round(float(rsi_val), 1),
-                },
-                "short": {
-                    "score":  int(short_res.score),
-                    "enter":  bool(short_res.should_enter),
-                    "sl":     float(short_res.stop_loss or 0),
-                    "tp":     float(short_res.take_profit or 0),
-                    "entry":  float(short_res.entry_price or 0),
-                    "reason": str(short_res.reason or "")[:100],
-                },
-                "in_position": inst_id in open_syms,
-                "timestamp":   datetime.now(timezone.utc).isoformat(),
-            }
-            _log(f"[SIGNALS] {sym} → L:{long_res.score} enter={long_res.should_enter} entry={long_res.entry_price:.4f}")
-        except Exception as _sig_err:
-            _log(f"[SIGNALS] ❌ {sym} HATA: {_sig_err}", "warning")
-            import traceback; _log(traceback.format_exc()[:300], "warning")
-
-        if long_res.should_enter:
-            status = f"BUY ({long_res.score}/11)"
-        elif short_res.should_enter:
-            status = f"SHORT ({short_res.score}/10)"
-        else:
-            status = f"HOLD (L:{long_res.score} S:{short_res.score})"
-        _log(f"{sym}: {status} | enter={long_res.should_enter}")
-
-    return signals
-
-
-def check_exits(positions: list, signals: dict):
-    TRAIL_ACTIVATION_PCT = float(os.getenv("TRAIL_ACTIVATION_PCT", "0.004"))
-    TRAIL_CALLBACK_PCT   = float(os.getenv("TRAIL_CALLBACK_PCT",   "0.0025"))
-    PROFIT_LOCK_1        = float(os.getenv("PROFIT_LOCK_1",  "5.0"))
-    PROFIT_LOCK_2        = float(os.getenv("PROFIT_LOCK_2",  "8.0"))
-    PROFIT_HALF          = float(os.getenv("PROFIT_HALF",   "12.0"))
-    PROFIT_FULL          = float(os.getenv("PROFIT_FULL",   "20.0"))
-
-    for pos in positions:
-        inst_id = pos["instId"]
-        sym     = COIN_MAP.get(inst_id, inst_id)
-
-        if inst_id not in _bot_opened_positions:
-            state_key = sym + ("_short" if pos.get("side") == "short" else "")
-            if state_key not in engine_state["open_positions"] and sym not in engine_state["open_positions"]:
-                continue
-
-        try:
-            price = float(_okx_get(f"/api/v5/market/ticker?instId={inst_id}")["data"][0]["last"])
-        except:
-            continue
-
-        entry = float(pos.get("avgPx", 0) or pos.get("entry", 0))
-        side  = pos.get("side", "long")
-        qty   = float(pos.get("pos", 0) or pos.get("qty", 0))
-
-        if entry <= 0 or qty <= 0:
-            continue
-
-        pos_detail   = engine_state["open_positions"].get(sym, {})
-        sl           = float(pos_detail.get("stop_loss",   0))
-        tp           = float(pos_detail.get("take_profit", 0))
-        half_closed  = pos_detail.get("half_closed",  False)
-        profit_stage = pos_detail.get("profit_stage", 0)
-
-        if sl <= 0 and entry > 0:
-            sl_mult = float(os.getenv("SL_ATR_MULT", "2.0"))
-            sl_pct  = 0.015 * sl_mult
-            sl = entry * (1 - sl_pct) if side == "long" else entry * (1 + sl_pct)
-            tp = (entry * (1 + sl_pct * 2) if side == "long" else entry * (1 - sl_pct * 2)) if tp <= 0 else tp
-            with _lock:
-                d = engine_state["open_positions"].setdefault(sym, {})
-                d.update({"stop_loss": sl, "take_profit": tp, "entry_price": entry, "side": side})
-            sl = 0
-
-        info     = get_contract_info(inst_id)
-        coin_qty = qty * info["ct_val"]
-        pnl_usdt = (price - entry) * coin_qty if side == "long" else (entry - price) * coin_qty
-
-        if pnl_usdt >= PROFIT_FULL:
-            _log(f"💰 {sym} +${pnl_usdt:.2f} — {'TAM' if not half_closed else 'KALAN'} KAPANIŞ")
-            close_position(inst_id, side, qty)
-            if _ADVANCED_MODULES:
-                try: get_risk_manager().record_trade_result(pnl_usdt)
-                except: pass
-            with _lock:
-                engine_state["open_positions"].pop(sym, None)
-            continue
-
-        elif pnl_usdt >= PROFIT_HALF and not half_closed:
-            _log(f"🎯 {sym} +${pnl_usdt:.2f} — %50 KISMİ SATIŞ")
-            half_qty   = max(1, int(qty * 0.5))
-            close_side = "sell" if side == "long" else "buy"
-            if not PAPER_TRADING and OKX_KEY:
-                r = _okx_post("/api/v5/trade/order", {
-                    "instId": inst_id, "tdMode": "cross", "side": close_side,
-                    "posSide": side, "ordType": "market", "sz": str(half_qty),
-                })
-                _log(f"✅ %50 satış OK" if r.get("code") == "0" else f"⚠️ %50 satış hatası: {r.get('msg','?')}")
-            else:
-                _log(f"[PAPER] {sym} %50 satış ({half_qty} kontrat @ ${price:.4f})")
-            with _lock:
-                d = engine_state["open_positions"].get(sym, {})
-                d.update({"half_closed": True, "half_close_pnl": pnl_usdt, "profit_stage": 3})
-            continue
-
-        elif pnl_usdt >= PROFIT_HALF and half_closed:
-            sig      = signals.get(sym, {})
-            long_ok  = sig.get("long",  {}).get("score", 0) >= 6 and sig.get("long",  {}).get("enter", False)
-            short_ok = sig.get("short", {}).get("score", 0) >= 6 and sig.get("short", {}).get("enter", False)
-            trend_ok = long_ok if side == "long" else short_ok
-            if not trend_ok and pnl_usdt < pos_detail.get("half_close_pnl", PROFIT_HALF):
-                _log(f"⚠️ {sym} Trend zayıfladı, kalan kapatılıyor (${pnl_usdt:.2f})")
-                close_position(inst_id, side, qty)
-                with _lock:
-                    engine_state["open_positions"].pop(sym, None)
-                continue
-
-        elif pnl_usdt >= PROFIT_LOCK_2 and profit_stage < 2:
-            new_sl = entry * 1.002 if side == "long" else entry * 0.998
-            if (side == "long" and new_sl > sl) or (side == "short" and new_sl < sl):
-                _log(f"🔒 {sym} +${pnl_usdt:.2f} KAR KORUMA 2: SL → ${new_sl:.4f}")
-                with _lock:
-                    d = engine_state["open_positions"].get(sym, {})
-                    d.update({"stop_loss": new_sl, "profit_stage": 2})
-                sl = new_sl
-
-        elif pnl_usdt >= PROFIT_LOCK_1 and profit_stage < 1:
-            protect_usdt = PROFIT_LOCK_1 * 0.8
-            coin_qty_sl  = qty * get_contract_info(inst_id)["ct_val"]
-            price_diff   = protect_usdt / coin_qty_sl if coin_qty_sl > 0 else 0
-            new_sl = (entry + price_diff) if side == "long" else (entry - price_diff)
-            if (side == "long" and new_sl > sl) or (side == "short" and new_sl < sl):
-                _log(f"🔒 {sym} +${pnl_usdt:.2f} KAR KİLİTLEME: SL → ${new_sl:.4f}")
-                with _lock:
-                    d = engine_state["open_positions"].get(sym, {})
-                    d.update({"stop_loss": new_sl, "profit_stage": 1})
-                sl = new_sl
-
-        if pnl_usdt >= PROFIT_LOCK_1:
-            if side == "long" and price >= entry * (1 + TRAIL_ACTIVATION_PCT):
-                prev_high = float(pos_detail.get("trail_high", 0))
-                new_high  = max(prev_high, price)
-                trail_sl  = new_high * (1 - TRAIL_CALLBACK_PCT)
-                if trail_sl > sl:
-                    _log(f"🔒 {sym} Trailing SL: ${sl:.4f} → ${trail_sl:.4f}")
-                    with _lock:
-                        d = engine_state["open_positions"].get(sym, {})
-                        d.update({"stop_loss": trail_sl, "trail_high": new_high})
-                    sl = trail_sl
-                else:
-                    with _lock:
-                        engine_state["open_positions"].get(sym, {})["trail_high"] = new_high
-
-            elif side == "short" and price <= entry * (1 - TRAIL_ACTIVATION_PCT):
-                prev_low = float(pos_detail.get("trail_low", float("inf")))
-                new_low  = min(prev_low, price)
-                trail_sl = new_low * (1 + TRAIL_CALLBACK_PCT)
-                if trail_sl < sl:
-                    _log(f"🔒 {sym} SHORT Trailing SL: ${sl:.4f} → ${trail_sl:.4f}")
-                    with _lock:
-                        d = engine_state["open_positions"].get(sym, {})
-                        d.update({"stop_loss": trail_sl, "trail_low": new_low})
-                    sl = trail_sl
-                else:
-                    with _lock:
-                        engine_state["open_positions"].get(sym, {})["trail_low"] = new_low
-
-        should_close = False
-        reason       = ""
-        if side == "long":
-            if sl > 0 and price <= sl:
-                should_close, reason = True, f"SL tetiklendi (${price:.4f} <= ${sl:.4f})"
-            elif tp > 0 and price >= tp:
-                should_close, reason = True, f"TP tetiklendi (${price:.4f} >= ${tp:.4f})"
-        else:
-            if sl > 0 and price >= sl:
-                should_close, reason = True, f"SL tetiklendi (${price:.4f} >= ${sl:.4f})"
-            elif tp > 0 and price <= tp:
-                should_close, reason = True, f"TP tetiklendi (${price:.4f} <= ${tp:.4f})"
-
-        if should_close:
-            _log(f"🔴 {sym} KAPAT — {reason} | PnL: ${pnl_usdt:.2f}")
-            close_position(inst_id, side, qty)
-            if _ADVANCED_MODULES:
-                try: get_risk_manager().record_trade_result(pnl_usdt)
-                except: pass
-                try:
-                    get_recycler().record_close(
-                        symbol=sym, inst_id=inst_id, side=side,
-                        entry_price=entry, close_price=price,
-                        pnl_usdt=pnl_usdt, close_reason=reason.split(" ")[0],
-                    )
-                except: pass
-            with _lock:
-                engine_state["open_positions"].pop(sym, None)
-
-
-# ── Funding Rate Arbitrage ────────────────────────────────────────────────────
-# Funding arb sadece BTC ve BNB üzerinden çalışır (likit coinler)
-FUNDING_COINS            = ["BTC-USDT-SWAP", "BNB-USDT-SWAP"]
-FUNDING_NOTIONAL         = float(os.getenv("FUNDING_NOTIONAL", "1000"))
-FUNDING_ENTRY_THRESHOLD  = float(os.getenv("FUNDING_ENTRY_PCT", "0.01"))
-FUNDING_EXIT_THRESHOLD   = float(os.getenv("FUNDING_EXIT_PCT",  "0.01"))
-FUNDING_MAX_SL_PCT       = 0.005
-FUNDING_LEVERAGE         = 3
-_funding_positions: Dict[str, dict] = {}
-
-
-def get_funding_rate(inst_id: str) -> float:
-    try:
-        data = _okx_get(f"/api/v5/public/funding-rate?instId={inst_id}")
-        return float(data.get("data", [{}])[0].get("fundingRate", 0) or 0)
-    except:
-        return 0.0
-
-
-def get_next_funding_time(inst_id: str) -> Optional[int]:
-    try:
-        data = _okx_get(f"/api/v5/public/funding-rate?instId={inst_id}")
-        return int(data.get("data", [{}])[0].get("nextFundingTime", 0) or 0)
-    except:
-        return None
-
-
-def run_funding_arbitrage(open_positions: list, db=None, trade_ids: dict = None) -> None:
-    if not OKX_KEY and not PAPER_TRADING:
-        return
-    open_syms = {p["instId"] for p in open_positions}
-
-    for inst_id in FUNDING_COINS:
-        sym             = COIN_MAP.get(inst_id, inst_id)
-        rate            = get_funding_rate(inst_id)
-        rate_pct        = rate * 100
-        next_ts         = get_next_funding_time(inst_id)
-        mins_to_funding = ((next_ts - int(time.time() * 1000)) / 60000) if next_ts else 999
-        fp              = _funding_positions.get(sym)
-
-        if fp:
-            should_exit = (abs(rate) < FUNDING_EXIT_THRESHOLD / 100 or
-                          (fp["side"] == "short" and rate < 0) or
-                          (fp["side"] == "long"  and rate > 0))
-            if should_exit:
-                _log(f"[FUNDING] {sym} kapat")
-                if not PAPER_TRADING:
-                    close_position(inst_id, fp["side"], fp.get("qty", 0))
-                _funding_positions.pop(sym, None)
-            continue
-
-        if mins_to_funding < 5 or inst_id in open_syms:
-            _log(f"[FUNDING] {sym} {'funding yakın' if mins_to_funding < 5 else 'zaten pozisyonda'} — funding arb atlandı")
-            continue
-
-        if abs(rate) < FUNDING_ENTRY_THRESHOLD / 100:
-            continue
-
-        arb_side = "sell" if rate > 0 else "buy"
-        arb_pos  = "short" if rate > 0 else "long"
-
-        try:
-            price = float(_okx_get(f"/api/v5/market/ticker?instId={inst_id}")["data"][0]["last"])
-        except:
-            continue
-
-        sl            = price * (1 - FUNDING_MAX_SL_PCT) if arb_pos == "long" else price * (1 + FUNDING_MAX_SL_PCT)
-        expected_gain = round(FUNDING_NOTIONAL * abs(rate), 4)
-        _log(f"[FUNDING ARB] {sym} {arb_pos.upper()} | Rate=%{rate_pct:.4f} | Beklenen=${expected_gain:.4f} | {mins_to_funding:.0f}dk kaldı")
-
-        ok = place_order(inst_id, arb_side, FUNDING_NOTIONAL, price, sl_price=sl) if not PAPER_TRADING else True
-        if ok:
-            _funding_positions[sym] = {
-                "symbol": sym, "side": arb_pos, "entry": price, "sl": sl,
-                "qty": FUNDING_NOTIONAL / price if price > 0 else 0,
-                "funding_rate": rate, "expected_gain": expected_gain,
-                "opened_at": datetime.now(timezone.utc).isoformat(), "current_price": price,
-            }
-            _log(f"[FUNDING ARB] ✅ {sym} {arb_pos.upper()} açıldı")
-
-
-# ── Sabitler ──────────────────────────────────────────────────────────────────
-
-PULLBACK_SHORT_ACTIVE = os.getenv("PULLBACK_SHORT_ACTIVE", "true").lower() == "true"
-LONG_MIN_SCORE        = int(os.getenv("LONG_MIN_SCORE", "6"))
-TP1_R_MULT            = float(os.getenv("TP1_R_MULT", "0.5"))
-TP2_R_MULT            = float(os.getenv("TP2_R_MULT", "1.0"))
-
-
-def _is_good_trading_hour() -> bool:
-    return True
-
-
-# ── Grid Trading ──────────────────────────────────────────────────────────────
-# Grid sadece BTC üzerinden çalışır (en likit)
-GRID_COINS         = ["BTC-USDT-SWAP"]
-GRID_TOTAL_CAPITAL = float(os.getenv("GRID_CAPITAL",  "200"))
-GRID_LEVELS        = int(os.getenv("GRID_LEVELS",     "8"))
-GRID_LEVERAGE      = int(os.getenv("GRID_LEVERAGE",   "3"))
-GRID_ATR_MULT      = float(os.getenv("GRID_ATR_MULT", "3.0"))
-GRID_ACTIVE        = os.getenv("GRID_ACTIVE", "true").lower() == "true"
-_grid_state: Dict[str, dict] = {}
-
-
-def _calc_atr_14(inst_id: str, bar: str = "1H") -> float:
-    try:
-        df   = fetch_ohlcv(inst_id, bar=bar, limit=30)
-        if df is None or len(df) < 15:
-            return 0.0
-        prev = df["close"].shift(1)
-        tr   = pd.concat([df["high"] - df["low"],
-                          (df["high"] - prev).abs(),
-                          (df["low"]  - prev).abs()], axis=1).max(axis=1)
-        return float(tr.ewm(span=14, adjust=False).mean().iloc[-1])
-    except:
-        return 0.0
-
-
-def _place_grid_limit_order(inst_id, side, price, sz, pos_side):
-    if PAPER_TRADING:
-        _log(f"[PAPER GRID] {side.upper()} {inst_id} {sz}k @ ${price:.4f}")
-        return f"PAPER-{inst_id}-{side}-{int(price)}"
-    if not OKX_KEY:
-        return None
-    try:
-        info   = get_contract_info(inst_id)
-        result = _okx_post("/api/v5/trade/order", {
-            "instId": inst_id, "tdMode": "cross", "side": side,
-            "posSide": pos_side, "ordType": "limit",
-            "px": round_price(price, info["tick_sz"]), "sz": str(sz),
-        })
-        if result.get("code") == "0":
-            oid = result["data"][0]["ordId"]
-            _log(f"[GRID] ✓ {side.upper()} {inst_id} @ ${price:.2f} ({oid[:8]})")
-            return oid
-        _log(f"[GRID] ✗ {inst_id}: {result.get('msg','?')}", "warning")
-        return None
-    except Exception as e:
-        _log(f"[GRID] Hata: {e}", "warning")
-        return None
-
-
-def _cancel_grid_orders(inst_id, order_ids):
-    if PAPER_TRADING or not OKX_KEY or not order_ids:
-        return
-    try:
-        for i in range(0, len(order_ids), 20):
-            batch = [{"instId": inst_id, "ordId": oid}
-                     for oid in order_ids[i:i+20] if oid and not oid.startswith("PAPER")]
-            if batch:
-                _okx_post("/api/v5/trade/cancel-batch-orders", batch)
-    except Exception as e:
-        _log(f"[GRID] İptal hatası: {e}", "warning")
-
-
-def _get_grid_filled_orders(inst_id, order_ids):
-    if PAPER_TRADING or not OKX_KEY or not order_ids:
-        return []
-    filled = []
-    try:
-        for oid in order_ids:
-            if not oid or oid.startswith("PAPER"):
-                continue
-            data   = _okx_get(f"/api/v5/trade/order?instId={inst_id}&ordId={oid}")
-            orders = data.get("data", [])
-            if orders and orders[0].get("state") == "filled":
-                filled.append(orders[0])
-    except:
-        pass
-    return filled
-
-
-def setup_grid(inst_id: str, current_price: float) -> None:
-    capital = GRID_TOTAL_CAPITAL / len(GRID_COINS)
-    atr     = _calc_atr_14(inst_id, bar="1H")
-    if atr <= 0:
-        _log(f"[GRID] {inst_id} ATR hesaplanamadı", "warning")
-        return
-
-    grid_range = atr * GRID_ATR_MULT
-    lower      = current_price - grid_range / 2
-    upper      = current_price + grid_range / 2
-    step       = grid_range / GRID_LEVELS
-    info       = get_contract_info(inst_id)
-    qty_sz     = max(1, round((capital / GRID_LEVELS / current_price) / info["ct_val"]))
-    levels     = [round(lower + i * step, 2) for i in range(GRID_LEVELS)]
-
-    _log(f"[GRID] {inst_id} kurulum | ${lower:.2f}-${upper:.2f} | adım:${step:.2f} | ATR:${atr:.2f}")
-
-    if inst_id in _grid_state:
-        old = _grid_state[inst_id]
-        _cancel_grid_orders(inst_id, old.get("buy_order_ids",  []))
-        _cancel_grid_orders(inst_id, old.get("sell_order_ids", []))
-
-    buy_ids, sell_ids = [], []
-    CLOSE_DIST = step * 0.3
-    for lvl in levels:
-        if lvl < current_price - CLOSE_DIST:
-            oid = _place_grid_limit_order(inst_id, "buy",  lvl, qty_sz, "long")
-            if oid: buy_ids.append(oid)
-        elif lvl > current_price + CLOSE_DIST:
-            oid = _place_grid_limit_order(inst_id, "sell", lvl, qty_sz, "short")
-            if oid: sell_ids.append(oid)
-
-    oid_near = _place_grid_limit_order(inst_id, "buy", round(current_price - CLOSE_DIST, 2), qty_sz, "long")
-    if oid_near and oid_near not in buy_ids:
-        buy_ids.insert(0, oid_near)
-
-    _grid_state[inst_id] = {
-        "active": True, "levels": levels, "step": step,
-        "lower": lower, "upper": upper, "qty_sz": qty_sz,
-        "capital": capital, "setup_price": current_price,
-        "buy_order_ids": buy_ids, "sell_order_ids": sell_ids,
-        "filled_buys": 0, "filled_sells": 0, "total_pnl": 0.0,
-        "last_check": datetime.now(timezone.utc).isoformat(),
-    }
-    _log(f"[GRID] {inst_id} aktif | {len(buy_ids)} alış + {len(sell_ids)} satış")
-
-
-def run_grid_trading() -> None:
-    if not GRID_ACTIVE:
-        return
-    for inst_id in GRID_COINS:
-        sym = COIN_MAP.get(inst_id, inst_id)
-        try:
-            current_price = float(_okx_get(f"/api/v5/market/ticker?instId={inst_id}")["data"][0]["last"])
-        except:
-            continue
-
-        gs = _grid_state.get(inst_id)
-        if not gs or not gs.get("active"):
-            if OKX_KEY and not PAPER_TRADING:
-                try:
-                    _okx_post("/api/v5/account/set-leverage", {
-                        "instId": inst_id, "lever": str(GRID_LEVERAGE), "mgnMode": "cross"
-                    })
-                except: pass
-            setup_grid(inst_id, current_price)
-            continue
-
-        margin = gs["step"] * 0.5
-        if current_price < gs["lower"] - margin or current_price > gs["upper"] + margin:
-            _log(f"[GRID] {sym} aralık dışı — yeniden kuruluyor")
-            setup_grid(inst_id, current_price)
-            continue
-
-        for order in _get_grid_filled_orders(inst_id, gs.get("buy_order_ids", []) + gs.get("sell_order_ids", [])):
-            fill_price = float(order.get("avgPx", 0) or 0)
-            fill_side  = order.get("side", "buy")
-            fill_sz    = int(float(order.get("accFillSz", gs["qty_sz"])))
-            gs["total_pnl"] += float(order.get("pnl", 0) or 0) + float(order.get("fee", 0) or 0)
-
-            if fill_side == "buy":
-                gs["filled_buys"] += 1
-                sell_p = fill_price + gs["step"]
-                if sell_p <= gs["upper"]:
-                    oid = _place_grid_limit_order(inst_id, "sell", sell_p, fill_sz, "short")
-                    if oid: gs["sell_order_ids"].append(oid)
-                if order.get("ordId") in gs["buy_order_ids"]:
-                    gs["buy_order_ids"].remove(order["ordId"])
-            elif fill_side == "sell":
-                gs["filled_sells"] += 1
-                buy_p = fill_price - gs["step"]
-                if buy_p >= gs["lower"]:
-                    oid = _place_grid_limit_order(inst_id, "buy", buy_p, fill_sz, "long")
-                    if oid: gs["buy_order_ids"].append(oid)
-                if order.get("ordId") in gs["sell_order_ids"]:
-                    gs["sell_order_ids"].remove(order["ordId"])
-
-        gs["last_check"] = datetime.now(timezone.utc).isoformat()
-        _log(f"[GRID] {sym} | ${current_price:.2f} | Alış:{len(gs['buy_order_ids'])} Satış:{len(gs['sell_order_ids'])} | Kâr:${gs['total_pnl']:.4f}")
-
-
-# ── Bakiye Koruma ─────────────────────────────────────────────────────────────
-
-BALANCE_FLOOR = float(os.getenv("BALANCE_FLOOR", "0"))
-
-
-def _check_balance_floor(balance: float, positions: list = None) -> bool:
-    if balance <= BALANCE_FLOOR:
-        if not engine_state.get("balance_floor_hit"):
-            _log(f"🚨 BAKİYE KORUMA — ${balance:.2f} <= ${BALANCE_FLOOR:.2f}", "error")
-            for p in (positions or []):
-                try:
-                    if not PAPER_TRADING and OKX_KEY:
-                        close_position(p.get("instId",""), p.get("side","long"), p.get("qty",0))
-                except: pass
-            for inst_id in GRID_COINS:
-                gs = _grid_state.get(inst_id, {})
-                if gs:
-                    _cancel_grid_orders(inst_id, gs.get("buy_order_ids",  []))
-                    _cancel_grid_orders(inst_id, gs.get("sell_order_ids", []))
-                    gs["active"] = False
-            with _lock:
-                engine_state.update({
-                    "balance_floor_hit": True,
-                    "balance_floor_at":  datetime.now(timezone.utc).isoformat(),
-                    "open_positions":    {},
-                })
-        return True
-
-    if engine_state.get("balance_floor_hit"):
-        _log(f"✅ Bakiye ${balance:.2f} — koruma kaldırıldı")
-        with _lock:
-            engine_state["balance_floor_hit"] = False
-            engine_state["balance_floor_at"]  = None
-    return False
-
-
-# ── Ana Döngü ─────────────────────────────────────────────────────────────────
-
-def bot_loop():
-    _log(f"Bot başlatıldı | Paper={PAPER_TRADING} | Kaldıraç={LEVERAGE}x | RSI_MAX={LONG_RSI_MAX} | Scorer={'aktif' if _SCORER_AVAILABLE else 'devre dışı'}")
-    _log(f"Mod: {'Dinamik coin seçimi' if _DYNAMIC_SCAN else 'Sabit coin listesi'}")
-    _log(f"Fallback coinler: {', '.join(COINS_FALLBACK)}")
-
-    db = None
-    try:
-        import db_manager as _db
-        if _db.init_db():
-            db = _db
-            _log("PostgreSQL bağlantısı kuruldu")
-    except Exception as e:
-        _log(f"DB başlatılamadı: {e}", "warning")
-
-    _trade_ids: Dict[str, int] = {}
-    # Başlangıçta fallback coinlere kaldıraç ayarla
-    for inst_id in COINS_FALLBACK:
-        set_leverage(inst_id, LEVERAGE)
-
-    while True:
-        try:
-            with _lock:
-                engine_state["loop_count"] += 1
-                loop_num = engine_state["loop_count"]
-
-            _log(f"─── Döngü #{loop_num} ───")
-
-            balance = get_balance()
-            with _lock:
-                engine_state["balance"] = balance
-
-            positions = get_open_positions()
-
-            if _check_balance_floor(balance, positions):
-                time.sleep(LOOP_SECONDS)
-                continue
-
-            current_regime = "RANGE"
-            regime_mult    = 1.0
-            if _ADVANCED_MODULES:
-                try:
-                    df_btc_1h   = fetch_ohlcv("BTC-USDT-SWAP", bar="1H", limit=80)
-                    df_btc_4h   = fetch_ohlcv("BTC-USDT-SWAP", bar="4H", limit=60)
-                    btc_funding = get_funding_rate("BTC-USDT-SWAP")
-                    if df_btc_1h is not None and len(df_btc_1h) >= 30:
-                        btc_regime     = get_btc_regime(df_btc_1h, df_btc_4h, btc_funding)
-                        current_regime = btc_regime.regime
-                        regime_mult    = btc_regime.position_size_mult
-                        _log(f"📊 Rejim: {regime_summary(btc_regime)}")
-                        with _lock:
-                            engine_state["regime"] = {
-                                "name":        btc_regime.regime,
-                                "confidence":  btc_regime.confidence,
-                                "adx_1h":      btc_regime.adx_1h,
-                                "adx_4h":      btc_regime.adx_4h,
-                                "allow_long":  btc_regime.allow_long,
-                                "allow_short": btc_regime.allow_short,
-                                "pos_mult":    btc_regime.position_size_mult,
-                                "reason":      btc_regime.reason,
-                            }
-                except Exception as _re:
-                    _log(f"[REGIME] Hata: {_re}", "warning")
-
-            if _ADVANCED_MODULES:
-                try:
-                    rm        = get_risk_manager()
-                    daily_pnl = engine_state.get("daily_pnl", 0.0)
-                    rm.update_state(positions, balance, daily_pnl)
-                    risk_state = rm.get_state_summary()
-                    if risk_state["is_paused"]:
-                        _log(f"⏸ Risk Manager: {risk_state['pause_reason']}")
-                    with _lock:
-                        engine_state["risk_state"] = risk_state
-                except Exception as _rme:
-                    _log(f"[RISK] Hata: {_rme}", "warning")
-
-            signals_snap = engine_state.get("signals", {})
-            if positions and signals_snap:
-                check_exits(positions, signals_snap)
-                positions = get_open_positions()
-
-            signals = run_signals(positions)
-
-            # Sanitize signals — strip DataFrames and non-serializable objects
-            def _jsafe(v):
-                if isinstance(v, (bool,int,str,type(None))): return v
-                try: return float(v)
-                except: return None
-
-            _log(f"[DEBUG] signals dict boyutu: {len(signals)}")
-
-            # ── EMİR AÇMA — signals hazır, hemen işle ────────────────────────
-            try:
-                # Tüm açık pozisyonları say (restart sonrası _bot_opened_positions boşalır)
-                _bot_pos_list = positions  # tüm pozisyonlar
-                _open_cnt     = len(_bot_pos_list)
-                _open_longs   = {p["instId"] for p in _bot_pos_list if p.get("side")=="long"}
-                _long_cnt     = len(_open_longs)
-                _long_lim     = MAX_POSITIONS
-
-                _log(f"[EMIR] signals:{len(signals)} pos:{_open_cnt}/{MAX_POSITIONS} long:{_long_cnt}/{_long_lim} rejim:{current_regime}")
-
-                for _esym, _esig in signals.items():
-                    if _open_cnt >= MAX_POSITIONS:
-                        _log(f"⛔ Max pozisyon ({_open_cnt}/{MAX_POSITIONS})")
-                        break
-                    if _esig.get("in_position"):
-                        continue
-                    _einst  = _esig.get("inst_id","")
-                    _elong  = _esig.get("long",{})
-                    _lenter = _elong.get("enter", False)
-                    _lscore = int(_elong.get("score", 0))
-                    _lentry = float(_elong.get("entry", 0) or 0)
-                    _lsl    = float(_elong.get("sl", 0) or 0)
-                    _ltp    = float(_elong.get("tp", 0) or 0)
-                    _lrsi   = float(_elong.get("rsi", 0) or 0)
-
-                    _log(f"[EMIR-CHK] {_esym} enter={_lenter} score={_lscore} entry={_lentry:.4f} min={LONG_MIN_SCORE}")
-
-                    # Zaten bu coinde pozisyon var mı?
-                    _already_open = any(p.get("instId")==_einst for p in positions)
-                    if _already_open:
-                        _log(f"⏭ {_esym} zaten açık pozisyon var — atlanıyor")
-                    if (_lenter and _lentry > 0 and _lscore >= LONG_MIN_SCORE
-                            and not _already_open
-                            and _long_cnt < _long_lim
-                            and current_regime != "NO_TRADE"
-                            and _lrsi < LONG_RSI_MAX):
-
-                        _sl  = _lsl  or _lentry * 0.97
-                        _tp  = _ltp  or _lentry * 1.06
-                        # Emir öncesi leverage kesin ayarla
-                        try: set_leverage(_einst, LEVERAGE)
-                        except: pass
-                        _log(f"🟢 {_esym} LONG | Puan:{_lscore}/11 | RSI:{_lrsi:.1f} | Rejim:{current_regime} | Giriş:${_lentry:.4f} SL:${_sl:.4f} TP:${_tp:.4f} | {LEVERAGE}x")
-                        _ok = place_order(_einst, "buy", SLOT_NOTIONAL, _lentry, sl_price=_sl, tp1_price=_tp, tp2_price=_tp)
-                        if _ok:
-                            _bot_opened_positions.add(_einst)
-                            _open_cnt  += 1
-                            _long_cnt  += 1
-                            with _lock:
-                                engine_state["open_positions"][_esym] = {
-                                    "symbol": _esym, "side": "long",
-                                    "entry_price": _lentry, "stop_loss": _sl,
-                                    "take_profit": _tp, "score": _lscore,
-                                    "notional": SLOT_NOTIONAL, "leverage": LEVERAGE,
-                                    "opened_at": datetime.now(timezone.utc).isoformat(),
-                                }
-            except Exception as _ee:
-                import traceback
-                _log(f"[EMIR] Hata: {_ee} | {traceback.format_exc()[:300]}", "warning")
-
-            # ── SAFE_SIGS (dashboard için) ────────────────────────────────────
-            safe_sigs = {}
-            for _sym, _sig in signals.items():
-                try:
-                    safe_sigs[_sym] = {
-                        "inst_id":     _sig.get("inst_id",""),
-                        "rsi":         _jsafe(_sig.get("rsi",0)),
-                        "df_1h":       None,
-                        "in_position": bool(_sig.get("in_position",False)),
-                        "timestamp":   str(_sig.get("timestamp","")),
-                        "long": {
-                            "score": _jsafe(_sig.get("long",{}).get("score",0)),
-                            "enter": bool(_sig.get("long",{}).get("enter",False)),
-                            "sl":    _jsafe(_sig.get("long",{}).get("sl",0)),
-                            "tp":    _jsafe(_sig.get("long",{}).get("tp",0)),
-                            "entry": _jsafe(_sig.get("long",{}).get("entry",0)),
-                            "reason": str(_sig.get("long",{}).get("reason",""))[:120],
-                            "rsi":   _jsafe(_sig.get("long",{}).get("rsi",0)),
-                        },
-                        "short": {
-                            "score": _jsafe(_sig.get("short",{}).get("score",0)),
-                            "enter": bool(_sig.get("short",{}).get("enter",False)),
-                            "sl":    _jsafe(_sig.get("short",{}).get("sl",0)),
-                            "tp":    _jsafe(_sig.get("short",{}).get("tp",0)),
-                            "entry": _jsafe(_sig.get("short",{}).get("entry",0)),
-                            "reason": str(_sig.get("short",{}).get("reason",""))[:120],
-                        },
-                    }
-                except Exception as _se:
-                    _log(f"[SAFE_SIGS] {_sym} hata: {_se}", "warning")
-            with _lock:
-                engine_state["signals"]   = safe_sigs
-                engine_state["last_scan"] = datetime.now(timezone.utc).isoformat()
-                engine_state["active_coins"] = list(safe_sigs.keys())
-                if _DYNAMIC_SCAN:
-                    try:
-                        sc = get_scanner_scores()
-                        engine_state["scanner_scores"] = {
-                            k: {"score": v.get("score",0), "reason": v.get("reason",""), "rsi": v.get("rsi",0)}
-                            for k,v in sc.items()
-                        }
-                        # Top 3 skoru logla
-                        top3 = sorted(sc.values(), key=lambda x: x.get("score",0), reverse=True)[:3]
-                        for s in top3:
-                            name = s.get("inst_id","").replace("-USDT-SWAP","")
-                            _log(f"[SCANNER] {name}: {s.get('score',0)}/10 | RSI:{s.get('rsi',0)} | {s.get('reason','')}")
-                    except: pass
-
-            if loop_num == 1 or loop_num % 5 == 0:
-                try: run_funding_arbitrage(positions, db=db, trade_ids=_trade_ids)
-                except Exception as _fe: _log(f"[FUNDING] Hata: {_fe}", "warning")
-                try:
-                    run_grid_trading()
-                    with _lock:
-                        engine_state["grid"] = {
-                            sym: {
-                                "active":       gs.get("active", False),
-                                "lower":        round(gs.get("lower", 0), 2),
-                                "upper":        round(gs.get("upper", 0), 2),
-                                "step":         round(gs.get("step",  0), 2),
-                                "filled_buys":  gs.get("filled_buys",  0),
-                                "filled_sells": gs.get("filled_sells", 0),
-                                "total_pnl":    round(gs.get("total_pnl", 0), 4),
-                                "buy_orders":   len(gs.get("buy_order_ids",  [])),
-                                "sell_orders":  len(gs.get("sell_order_ids", [])),
-                            }
-                            for sym, gs in _grid_state.items()
-                        }
-                except Exception as _ge: _log(f"[GRID] Hata: {_ge}", "warning")
-
-            bot_positions = positions  # tüm açık pozisyonlar
-            open_count    = len(bot_positions)
-            _log(f"[EMIR] bot_pos:{open_count} max:{MAX_POSITIONS} sinyaller:{len(signals)}")
-
-            open_longs  = {p["instId"] for p in bot_positions if p.get("side") == "long"}
-            open_shorts = {p["instId"] for p in bot_positions if p.get("side") == "short"}
-            long_limit  = MAX_POSITIONS  # Tüm slotlar long için
-            short_limit = MAX_POSITIONS // 2
-            long_count  = len(open_longs)
-            short_count = len(open_shorts)
-
-            _log(f"[EMIR] Sinyal sayısı: {len(signals)} | Açık pos: {open_count}/{MAX_POSITIONS} | Long:{long_count}/{long_limit}")
-            for sym, sig in signals.items():
-                _log(f"[EMIR-CHK] {sym} | enter={sig.get('long',{}).get('enter')} score={sig.get('long',{}).get('score')} entry={sig.get('long',{}).get('entry',0):.4f}")
-                if open_count >= MAX_POSITIONS:
-                    _log(f"⛔ Max pozisyon doldu ({open_count}/{MAX_POSITIONS})")
-                    break
-                if sig["in_position"]:
-                    _log(f"⏭ {sym} zaten pozisyonda")
-                    continue
-
-                inst_id = sig["inst_id"]
-                df_1h   = sig.get("df_1h")
-                l_enter = sig.get("long",{}).get("enter", False)
-                l_entry = sig.get("long",{}).get("entry", 0)
-                l_score = sig.get("long",{}).get("score", 0)
-                _log(f"[EMIR-CHK] {sym} | enter={l_enter} entry={l_entry:.2f} score={l_score} effective_min={LONG_MIN_SCORE} long_count={long_count}/{long_limit}")
-
-                if _ADVANCED_MODULES:
-                    try:
-                        recycler = get_recycler()
-                        if recycler.is_in_cooldown(sym):
-                            _log(f"⏳ {sym} cooldown'da")
-                            continue
-                        boost = recycler.get_score_boost(sym)
-                        if boost > 0:
-                            sig["long"]["score"]  += boost
-                            sig["short"]["score"] += boost
-                            _log(f"⚡ {sym} re-entry boost: +{boost}")
-                    except: pass
-
-                effective_min = LONG_MIN_SCORE
-                if current_regime == "TREND_UP":
-                    effective_min = max(6, LONG_MIN_SCORE - 2)
-                elif current_regime == "TREND_DOWN":
-                    effective_min = LONG_MIN_SCORE + 2
-
-                rsi_current = sig.get("rsi", 0)
-
-                # ── LONG SİNYALİ ─────────────────────────────────────────────
-                if (sig["long"]["enter"] and sig["long"]["entry"]
-                        and sig["long"]["score"] >= effective_min
-                        and inst_id not in open_longs
-                        and inst_id not in open_shorts
-                        and long_count < long_limit):
-
-                    if rsi_current > LONG_RSI_MAX and rsi_current > 0:
-                        _log(f"⛔ [LONG RSI BLOKE] {sym} — RSI:{rsi_current:.1f} > {LONG_RSI_MAX}")
-                        continue
-
-                    if current_regime == "NO_TRADE":
-                        _log(f"⛔ {sym} LONG — NO_TRADE rejimi")
-                        continue
-
-                    # SCORER devre dışı — pullback sinyal motoru yeterli
-                    # _SCORER_AVAILABLE kontrolü kaldırıldı: daha fazla giriş fırsatı
-
-                    price = sig["long"]["entry"]
-                    sl    = sig["long"]["sl"] or price * (1 - 0.012)
-                    tp    = sig["long"]["tp"] or price * (1 + 0.018)
-                    risk  = price - sl
-                    tp1   = price + risk * TP1_R_MULT
-                    tp2   = price + risk * TP2_R_MULT
-
-                    notional_to_use = SLOT_NOTIONAL
-                    if _ADVANCED_MODULES:
-                        try:
-                            rm = get_risk_manager()
-                            rd = rm.check_trade(
-                                inst_id=inst_id, side="long",
-                                notional=notional_to_use,
-                                entry_price=price, stop_price=sl,
-                                regime=current_regime, regime_mult=regime_mult,
-                            )
-                            if not rd.approved:
-                                _log(f"⛔ {sym} LONG risk reddi: {rd.reason}")
-                                continue
-                            for w in rd.warnings:
-                                _log(f"⚠ {sym} LONG: {w}")
-                        except Exception as _rme:
-                            _log(f"[RISK] Hata: {_rme}", "warning")
-
-                    _log(f"🟢 {sym} LONG | Puan:{sig['long']['score']}/11 | RSI:{rsi_current:.1f} | Rejim:{current_regime} | Slot:{long_count+1}/{long_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f}(0.5R) TP2:${tp2:.4f}(1R)")
-                    ok = place_order(inst_id, "buy", notional_to_use, price,
-                                     sl_price=sl, tp1_price=tp1, tp2_price=tp2)
-                    if ok:
-                        _bot_opened_positions.add(inst_id)
-                        with _lock:
-                            engine_state["open_positions"][sym] = {
-                                "symbol":        sym,
-                                "side":          "long",
-                                "entry_price":   price,
-                                "stop_loss":     sl,
-                                "take_profit":   tp,
-                                "notional":      notional_to_use,
-                                "opened_at":     datetime.now(timezone.utc).isoformat(),
-                                "score":         sig["long"]["score"],
-                                "rsi_at_entry":  rsi_current,
-                            }
-                        open_count += 1
-                        long_count += 1
-                        open_longs.add(inst_id)
-                        if _ADVANCED_MODULES:
-                            try: get_recycler().mark_re_entered(sym, success=True)
-                            except: pass
-                        if db:
-                            tid = db.open_trade(sym, "long", price, sl, tp, SLOT_NOTIONAL,
-                                                sig["long"]["score"], "Pullback Long",
-                                                "paper" if PAPER_TRADING else "live")
-                            if tid: _trade_ids[sym] = tid
-
-                # ── SHORT SİNYALİ ─────────────────────────────────────────────
-                elif (PULLBACK_SHORT_ACTIVE
-                        and sig["short"]["enter"] and sig["short"]["entry"]
-                        and sig["short"]["score"] >= effective_min
-                        and inst_id not in open_shorts
-                        and inst_id not in open_longs
-                        and short_count < short_limit):
-
-                    if current_regime == "NO_TRADE":
-                        _log(f"⛔ {sym} SHORT — NO_TRADE rejimi")
-                        continue
-
-                    if _SCORER_AVAILABLE:
-                        try:
-                            df_5m_sc = _scorer.get_cached_df(inst_id, "5m", 60)
-                            df_1m_sc = _scorer.get_cached_df(inst_id, "1m", 35)
-                            approved, sc_result = _scorer.approve(
-                                inst_id              = inst_id,
-                                side                 = "short",
-                                df_5m                = df_5m_sc,
-                                regime               = current_regime,
-                                open_positions_count = open_count,
-                                max_positions        = MAX_POSITIONS,
-                                daily_pnl            = engine_state.get("daily_pnl", 0.0),
-                                max_daily_loss       = float(os.getenv("MAX_DAILY_LOSS_USD", "50")),
-                                existing_sides       = [p.get("side", "long") for p in bot_positions],
-                                df_1h                = df_1h,
-                                df_1m                = df_1m_sc,
-                            )
-                            if not approved:
-                                _log(f"⛔ [SCORER] {sym} SHORT reddedildi — {sc_result.reject_reason} | skor:{sc_result.total}/16")
-                                continue
-                        except Exception as _se:
-                            _log(f"[SCORER] {sym} hata (devam ediliyor): {_se}", "warning")
-
-                    price = sig["short"]["entry"]
-                    sl    = sig["short"]["sl"] or price * (1 + 0.012)
-                    tp    = sig["short"]["tp"] or price * (1 - 0.018)
-                    risk  = sl - price
-                    tp1   = price - risk * TP1_R_MULT
-                    tp2   = price - risk * TP2_R_MULT
-
-                    notional_to_use = SLOT_NOTIONAL
-                    if _ADVANCED_MODULES:
-                        try:
-                            rm = get_risk_manager()
-                            rd = rm.check_trade(
-                                inst_id=inst_id, side="short",
-                                notional=SLOT_NOTIONAL,
-                                entry_price=price, stop_price=sl,
-                                regime=current_regime, regime_mult=regime_mult,
-                            )
-                            if not rd.approved:
-                                _log(f"⛔ {sym} SHORT risk reddi: {rd.reason}")
-                                continue
-                            for w in rd.warnings: _log(f"⚠ {sym} SHORT: {w}")
-                            notional_to_use = rd.position_size if rd.position_size > 0 else SLOT_NOTIONAL
-                        except Exception as _rme:
-                            _log(f"[RISK] Hata: {_rme}", "warning")
-
-                    _log(f"🔴 {sym} SHORT | Puan:{sig['short']['score']}/11 | Rejim:{current_regime} | Slot:{short_count+1}/{short_limit} | Giriş:${price:.4f} SL:${sl:.4f} TP1:${tp1:.4f}(0.5R) TP2:${tp2:.4f}(1R)")
-                    ok = place_order(inst_id, "sell", notional_to_use, price,
-                                     sl_price=sl, tp1_price=tp1, tp2_price=tp2)
-                    if ok:
-                        with _lock:
-                            engine_state["open_positions"][sym] = {
-                                "symbol":      sym,
-                                "side":        "short",
-                                "entry_price": price,
-                                "stop_loss":   sl,
-                                "take_profit": tp,
-                                "notional":    SLOT_NOTIONAL,
-                                "opened_at":   datetime.now(timezone.utc).isoformat(),
-                                "score":       sig["short"]["score"],
-                            }
-                        open_count  += 1
-                        short_count += 1
-                        open_shorts.add(inst_id)
-                        if db:
-                            tid = db.open_trade(sym, "short", price, sl, tp, SLOT_NOTIONAL,
-                                                sig["short"]["score"], "Pullback Short",
-                                                "paper" if PAPER_TRADING else "live")
-                            if tid: _trade_ids[sym] = tid
-
-            if _ADVANCED_MODULES:
-                try:
-                    recycler    = get_recycler()
-                    ready_items = recycler.get_ready_items()
-                    for item in ready_items:
-                        sym = item.trade.symbol
-                        _log(f"♻️ {sym} rescan — cooldown bitti")
-                        item.mark_attempted()
-                        sig     = signals.get(sym, {})
-                        b_long  = sig.get("long",  {}).get("score", 0) + item.score_boost
-                        b_short = sig.get("short", {}).get("score", 0) + item.score_boost
-                        if b_long  >= effective_min and sig.get("long",  {}).get("enter"):
-                            _log(f"♻️ {sym} re-entry LONG uygun ({b_long})")
-                        elif b_short >= effective_min and sig.get("short", {}).get("enter"):
-                            _log(f"♻️ {sym} re-entry SHORT uygun ({b_short})")
-                        else:
-                            _log(f"♻️ {sym} skor yetersiz")
-                            recycler.mark_re_entered(sym, success=False)
-                    with _lock:
-                        engine_state["recycle_state"] = recycler.get_status()
-                except Exception as _re:
-                    _log(f"[RECYCLE] Hata: {_re}", "warning")
-
-        except Exception as e:
-            _log(f"Döngü hatası: {e}", "error")
-
-        time.sleep(LOOP_SECONDS)
-
-
-def start():
-    with _lock:
-        engine_state["running"] = True
-    t = threading.Thread(target=bot_loop, daemon=True, name="BotEngine")
-    t.start()
-    _log("Bot motoru thread başlatıldı")
-    return t
+    .catch(()=>{});
+}
+function setText(id,val){const el=document.getElementById(id);if(el)el.textContent=val;}
+
+
+function loadHistory(){
+  fetch(API+'/api/trades').then(r=>r.json()).then(data=>{
+    const trades=Array.isArray(data)?data:(data.trades||[]);
+    const tbody=document.getElementById('hist-body');
+    if(!trades.length){tbody.innerHTML='<tr><td colspan="6" style="text-align:center;padding:40px;color:var(--text3)">Geçmiş yok</td></tr>';return;}
+    tbody.innerHTML=trades.slice(0,50).map(t=>{
+      const pnl=+t.pnl||0; const pp=pnl>=0;
+      return `<tr>
+        <td style="font-weight:600">${t.symbol||'--'}</td>
+        <td style="color:${t.side==='long'?'var(--green)':'var(--red)'};font-size:9px;font-weight:700">${(t.side||'').toUpperCase()}</td>
+        <td style="color:var(--text2)">${fmtP(+t.entry_price||+t.entry||0,'')}</td>
+        <td style="color:var(--text2)">${fmtP(+t.exit_price||+t.close_price||0,'')}</td>
+        <td style="color:${pp?'var(--green)':'var(--red)'};font-weight:600">${pp?'+':''}$${Math.abs(pnl).toFixed(2)}</td>
+        <td style="color:var(--text3);font-size:10px">${fmtD(t.opened_at||t.time||'')}</td>
+      </tr>`;
+    }).join('');
+  }).catch(()=>{});
+}
+
+/* ── LOGS ── */
+function appendLogs(lines){
+  const wrap=document.getElementById('log-wrap'); if(!wrap) return;
+  lines.forEach(line=>{
+    const div=document.createElement('div'); div.className='log-line';
+    const m=line.indexOf(']');
+    const ts=m>0?line.substring(1,m):''; const msg=m>0?line.substring(m+1).trim():line;
+    const cls=msg.includes('🟢')||msg.includes('✅')||msg.includes('💰')?'lg'
+      :msg.includes('🔴')||msg.includes('❌')||msg.includes('⛔')?'lr'
+      :msg.includes('⚠')||msg.includes('🔒')?'ly'
+      :msg.includes('📊')||msg.includes('🔄')?'lc':'li';
+    div.innerHTML=`<span class="log-time">${ts}</span><span class="${cls}">${msg}</span>`;
+    wrap.appendChild(div);
+    if(wrap.children.length>200) wrap.removeChild(wrap.firstChild);
+  });
+  wrap.scrollTop=wrap.scrollHeight;
+}
+
+/* ── HELPERS ── */
+function fmtP(p,sym){
+  if(!p||isNaN(p)) return '--';
+  const s=(sym||'').toUpperCase(); const n=+p;
+  if(s.includes('BTC'))  return '$'+n.toLocaleString('en-US',{minimumFractionDigits:1,maximumFractionDigits:1});
+  if(s.includes('BNB')||s.includes('SOL')) return '$'+n.toFixed(2);
+  if(s.includes('ONDO')) return '$'+n.toFixed(4);
+  if(s.includes('HYPE')) return '$'+n.toFixed(3);
+  if(n<0.001) return '$'+n.toFixed(8);
+  if(n<1)     return '$'+n.toFixed(6);
+  if(n<100)   return '$'+n.toFixed(4);
+  return '$'+n.toFixed(2);
+}
+function fmtD(ts){
+  if(!ts) return '--';
+  const d=new Date(ts); if(isNaN(d)) return ts;
+  return `${String(d.getDate()).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`;
+}
+
+/* ── INIT ── */
+connectWS();
+connectSSE();
+poll();
+load24h();
+setInterval(poll, 15000);       // 15 saniyede bir (5'ten düşürüldü)
+setInterval(load24h, 60000);    // 60 saniyede bir (30'dan düşürüldü)
+setInterval(()=>{ if(curPage==='signals'){ renderSignals(); } }, 10000); // 10 saniye
+setInterval(()=>{
+  _sigCountdown--;
+  if(_sigCountdown<=0) _sigCountdown=60;
+  const el=document.getElementById('sig-countdown');
+  if(el) el.textContent='~'+_sigCountdown+'s';
+}, 1000);
+</script>
+</body>
+</html>
