@@ -110,12 +110,18 @@ class PullbackShortStrategy:
 
         if score >= effective_min:
             try:
-                atr_val = float(_atr(df, 14).iloc[-1])
-                sl = close + atr_val * 2.0
-                tp = close - atr_val * 4.0
-                if tp <= 0:
-                    sl = close * 1.03
-                    tp = close * 0.94
+                if df_1h is not None and len(df_1h) >= 15:
+                    atr_val = float(_atr(df_1h, 14).iloc[-1])
+                else:
+                    atr_val = float(_atr(df, 14).iloc[-1]) * 6.0
+
+                sl_mult = float(os.getenv("SL_ATR_MULT", "2.0"))
+                sl = close + atr_val * sl_mult
+                tp = close - atr_val * sl_mult * 2.5
+
+                if tp <= 0 or (sl - close) / close < 0.008:
+                    sl = close * 1.008
+                    tp = close * (1 - 0.008 * 2.5)
             except:
                 sl = close * 1.03
                 tp = close * 0.94
