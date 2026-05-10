@@ -91,20 +91,40 @@ html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
 /* EMPTY */
 .empty{display:flex;flex-direction:column;align-items:center;justify-content:center;padding:60px 20px;color:var(--text3);gap:10px}
 .empty-icon{font-size:28px;opacity:.3}.empty-text{font-size:12px;letter-spacing:1px}
-/* SIGNALS */
-.sig-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px}
-.sig-card{background:var(--bg1);border:1px solid var(--border);border-radius:6px;padding:14px;position:relative;overflow:hidden}
-.sig-card::before{content:'';position:absolute;top:0;left:0;right:0;height:2px}
+/* SIGNAL CARDS */
+.sig-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:10px}
+.sig-card{background:var(--bg1);border:1px solid var(--border);border-radius:6px;padding:14px;position:relative;overflow:hidden;transition:border-color .2s}
+.sig-card::before{content:'';position:absolute;top:0;left:0;right:0;height:3px}
 .sig-buy::before{background:var(--green)}.sig-sell::before{background:var(--red)}.sig-hold::before{background:var(--text3)}
-.sg-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:8px}
-.sg-coin{font-size:14px;font-weight:700}
-.sg-badge{font-size:9px;font-weight:700;padding:3px 8px;border-radius:3px;letter-spacing:1px}
-.b-buy{background:var(--green-dim);color:var(--green)}.b-sell{background:var(--red-dim);color:var(--red)}.b-hold{background:rgba(68,85,119,.2);color:var(--text2)}
-.sg-price{font-size:20px;font-weight:700;margin:6px 0}
-.sg-bar{height:4px;background:rgba(255,255,255,.06);border-radius:2px;overflow:hidden;margin-bottom:8px}
-.sg-bar-fill{height:100%;border-radius:2px}
-.sg-rows{font-size:10px;color:var(--text2)}
-.sg-row{display:flex;justify-content:space-between;padding:2px 0}
+.sig-card.sig-buy{border-color:rgba(0,255,136,.3)}
+.sg-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+.sg-coin{font-size:16px;font-weight:700}
+.sg-badge{font-size:10px;font-weight:700;padding:4px 10px;border-radius:4px;letter-spacing:1px}
+.b-buy{background:var(--green-dim);color:var(--green);border:1px solid rgba(0,255,136,.3)}
+.b-sell{background:var(--red-dim);color:var(--red);border:1px solid rgba(255,51,85,.3)}
+.b-hold{background:rgba(68,85,119,.2);color:var(--text2)}
+.sg-price{font-size:22px;font-weight:700;margin:8px 0 4px}
+.sg-score-row{display:flex;align-items:center;gap:8px;margin-bottom:10px}
+.sg-score-track{flex:1;height:6px;background:rgba(255,255,255,.06);border-radius:3px;overflow:hidden}
+.sg-score-fill{height:100%;border-radius:3px;transition:width .5s}
+.sg-score-num{font-size:11px;color:var(--text2);min-width:36px;text-align:right}
+.sg-details{display:grid;grid-template-columns:1fr 1fr;gap:6px;margin-bottom:10px}
+.sg-detail{background:var(--bg2);border-radius:4px;padding:6px 8px}
+.sg-dl{font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px}
+.sg-dv{font-size:12px;font-weight:600;margin-top:2px}
+.sg-inds{display:flex;flex-wrap:wrap;gap:4px}
+.ind{font-size:9px;padding:2px 7px;border-radius:3px;letter-spacing:.5px}
+.ind-ok{background:rgba(0,255,136,.1);color:var(--green)}
+.ind-no{background:rgba(68,85,119,.15);color:var(--text3)}
+/* SCANNER TABLE */
+.scanner-wrap{margin-top:16px}
+.scanner-title{font-size:10px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;padding-bottom:6px;border-bottom:1px solid var(--border)}
+.scanner-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(180px,1fr));gap:6px}
+.sc-card{background:var(--bg1);border:1px solid var(--border);border-radius:5px;padding:8px 10px;display:flex;justify-content:space-between;align-items:center}
+.sc-name{font-size:12px;font-weight:600}
+.sc-right{text-align:right}
+.sc-score{font-size:14px;font-weight:700}
+.sc-reason{font-size:9px;color:var(--text3);margin-top:2px}
 /* HISTORY */
 .hist-table{width:100%;border-collapse:collapse;font-size:11px}
 .hist-table th{padding:8px 12px;text-align:left;font-size:9px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;border-bottom:1px solid var(--border);font-weight:400}
@@ -166,6 +186,24 @@ html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
 .str-dir{font-size:9px;font-weight:700}
 .str-pnl{font-weight:600}
 .str-time{font-size:9px;color:var(--text3)}
+/* SIGNAL BAR PANEL */
+.sbar-row{display:flex;align-items:center;gap:8px;padding:7px 12px;background:var(--bg1);border:1px solid var(--border);border-radius:5px;cursor:pointer;transition:all .15s}
+.sbar-row:hover{border-color:var(--border2);background:var(--bg2)}
+.sbar-row.sbar-buy{border-color:rgba(0,255,136,.4);background:rgba(0,255,136,.04)}
+.sbar-row.sbar-sel{border-color:var(--cyan);background:rgba(0,204,255,.05)}
+.sbar-name{font-size:12px;font-weight:600;width:48px;flex-shrink:0;color:var(--text)}
+.sbar-track{flex:1;height:8px;background:rgba(255,255,255,.06);border-radius:4px;overflow:hidden;position:relative}
+.sbar-fill{height:100%;border-radius:4px;transition:width .6s cubic-bezier(.4,0,.2,1)}
+.sbar-thresh{position:absolute;top:0;bottom:0;width:2px;background:rgba(0,255,136,.5);z-index:1}
+.sbar-score{font-size:11px;font-weight:500;width:32px;text-align:right;flex-shrink:0}
+.sbar-badge{font-size:9px;font-weight:700;padding:2px 7px;border-radius:3px;width:38px;text-align:center;flex-shrink:0}
+.sb-buy{background:rgba(0,255,136,.12);color:var(--green)}
+.sb-hold{background:rgba(68,85,119,.2);color:var(--text3)}
+.sbar-rsi{font-size:10px;width:40px;flex-shrink:0;text-align:right;color:var(--text3)}
+.sc-mini{background:var(--bg1);border:1px solid var(--border);border-radius:4px;padding:6px 8px;display:flex;justify-content:space-between;align-items:center}
+.sc-mini-name{font-size:11px;font-weight:600;color:var(--text)}
+.sc-mini-score{font-size:13px;font-weight:700}
+.sc-mini-rsi{font-size:9px;color:var(--text3)}
 /* TOAST */
 #toasts{position:fixed;bottom:20px;right:20px;z-index:9000;display:flex;flex-direction:column;gap:8px;align-items:flex-end}
 .toast{background:var(--bg2);border:1px solid var(--border2);border-radius:6px;padding:10px 14px;font-size:11px;min-width:220px;display:flex;align-items:center;gap:10px;animation:tin .3s ease}
@@ -221,8 +259,33 @@ html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
       </div>
     </div>
     <div class="page" id="page-signals">
-      <div class="sig-grid" id="sig-grid">
-        <div class="empty"><div class="empty-icon">⟡</div><div class="empty-text">Sinyal bekleniyor...</div></div>
+      <!-- Üst özet kartlar -->
+      <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:8px;margin-bottom:14px">
+        <div class="acc-card"><div class="ac-label">Rejim</div><div class="ac-val" id="sig-regime" style="font-size:12px;color:var(--text)">--</div></div>
+        <div class="acc-card"><div class="ac-label">BUY Sinyal</div><div class="ac-val" id="sig-buy-cnt" style="color:var(--green)">0</div></div>
+        <div class="acc-card"><div class="ac-label">Tarama</div><div class="ac-val" id="sig-scan-cnt" style="font-size:12px;color:var(--text2)">-- coin</div></div>
+        <div class="acc-card"><div class="ac-label">Sonraki</div><div class="ac-val" id="sig-countdown" style="font-size:12px;color:var(--text2)">~60s</div></div>
+      </div>
+      <!-- Bar listesi -->
+      <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px;display:flex;justify-content:space-between">
+        <span>SİNYAL SKORU — EŞİK: 6/11</span>
+        <span id="sig-updated" style="color:var(--text3)">güncelleniyor...</span>
+      </div>
+      <div id="sig-bar-list" style="display:flex;flex-direction:column;gap:5px"></div>
+      <!-- Detay paneli -->
+      <div id="sig-detail" style="display:none;margin-top:14px;background:var(--bg1);border:1px solid var(--border2);border-radius:6px;padding:14px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div id="sig-det-coin" style="font-size:16px;font-weight:700;color:var(--text)">--</div>
+          <span id="sig-det-badge" style="font-size:10px;padding:3px 10px;border-radius:3px;font-weight:700">--</span>
+        </div>
+        <div id="sig-det-grid" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:12px"></div>
+        <div style="font-size:9px;letter-spacing:1.5px;text-transform:uppercase;color:var(--text3);margin-bottom:6px">Göstergeler</div>
+        <div id="sig-det-inds" style="display:flex;flex-wrap:wrap;gap:4px"></div>
+      </div>
+      <!-- Scanner puanları -->
+      <div style="margin-top:16px">
+        <div style="font-size:9px;letter-spacing:2px;text-transform:uppercase;color:var(--text3);margin-bottom:8px">SCANNER — TÜM COINLER</div>
+        <div id="sig-scanner-grid" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(160px,1fr));gap:5px"></div>
       </div>
     </div>
     <div class="page" id="page-history">
@@ -338,7 +401,7 @@ html,body{height:100%;background:var(--bg);color:var(--text);overflow:hidden}
 
 <script>
 /* ── STATE ── */
-const S = { positions:[], prices:{}, signals:{}, regime:{}, logs:[] };
+const S = { positions:[], prices:{}, signals:{}, regime:{}, logs:[], balance:0, scannerScores:{} };
 let curPage = 'positions';
 const API = window.location.origin;
 
@@ -422,6 +485,9 @@ function connectSSE(){
       const d=JSON.parse(e.data);
       const sigs=d.signals||d.botStatus?.signals||{};
       if(Object.keys(sigs).length){S.signals=sigs; if(curPage==='signals')renderSignals();}
+      // Scanner scores
+      const sc=d.scanner_scores||d.botStatus?.scanner_scores;
+      if(sc&&Object.keys(sc).length){ S.scannerScores=sc; if(curPage==='signals')renderScannerScores(); }
       const reg=d.regime||d.botStatus?.regime||{};
       if(Object.keys(reg).length){S.regime=reg; renderRegime();}
       const logs=d.botStatus?.logs||[];
@@ -580,35 +646,167 @@ function setTopPnL(total){
   if(rEl){rEl.textContent=str; rEl.style.color=pp?'var(--green)':'var(--red)';}
 }
 
-/* ── SIGNALS ── */
+/* ── SİNYAL BAR PANELİ ── */
+const MIN_SC = 6; const MAX_SC = 11; const THRESH_PCT = (MIN_SC/MAX_SC*100).toFixed(1);
+let _selCoin = null;
+let _sigCountdown = 60;
+
 function renderSignals(){
-  const grid=document.getElementById('sig-grid');
-  const sigs=Object.entries(S.signals);
-  if(!sigs.length){grid.innerHTML='<div class="empty"><div class="empty-icon">⟡</div><div class="empty-text">Sinyal bekleniyor...</div></div>';return;}
-  grid.innerHTML=sigs.map(([sym,sig])=>{
-    const ls=sig.long||{}; const ss=sig.short||{};
-    const buy=ls.enter; const sell=ss.enter;
-    const cls=buy?'sig-buy':sell?'sig-sell':'sig-hold';
-    const badge=buy?'BUY':sell?'SHORT':'HOLD';
-    const bcls=buy?'b-buy':sell?'b-sell':'b-hold';
-    const sc=buy?ls.score:sell?ss.score:ls.score||0;
-    const p=S.prices[sym]||ls.entry||0;
-    const pct=Math.round((sc||0)/11*100);
-    const disp=sym.replace('USDT','');
-    return `<div class="sig-card ${cls}">
-      <div class="sg-head"><div class="sg-coin">${disp}<span style="font-size:10px;color:var(--text3)">/USDT</span></div><span class="sg-badge ${bcls}">${badge}</span></div>
-      <div class="sg-price">${fmtP(p,sym)}</div>
-      <div class="sg-bar"><div class="sg-bar-fill" style="width:${pct}%;background:${buy?'var(--green)':sell?'var(--red)':'var(--text3)'}"></div></div>
-      <div class="sg-rows">
-        <div class="sg-row"><span style="color:var(--text3)">Skor</span><span>${sc}/11</span></div>
-        ${sig.rsi?`<div class="sg-row"><span style="color:var(--text3)">RSI</span><span>${sig.rsi}</span></div>`:''}
-        ${ls.sl?`<div class="sg-row"><span style="color:var(--red)">SL</span><span>${fmtP(ls.sl,sym)}</span></div>`:''}
-        ${ls.tp?`<div class="sg-row"><span style="color:var(--green)">TP</span><span>${fmtP(ls.tp,sym)}</span></div>`:''}
+  const sigs = S.signals;
+  const scanner = S.scannerScores || {};
+  const allEntries = {};
+
+  // Merge signals + scanner
+  Object.entries(sigs).forEach(([sym, sig]) => {
+    const inst = sym.replace('USDT','-USDT-SWAP');
+    allEntries[inst] = allEntries[inst] || {};
+    allEntries[inst].sig = sig;
+    allEntries[inst].name = sym.replace('USDT','');
+  });
+  Object.entries(scanner).forEach(([inst, sc]) => {
+    allEntries[inst] = allEntries[inst] || {};
+    allEntries[inst].sc = sc;
+    allEntries[inst].name = inst.replace('-USDT-SWAP','');
+  });
+
+  const entries = Object.entries(allEntries);
+  if(!entries.length){
+    document.getElementById('sig-bar-list').innerHTML =
+      '<div class="empty"><div class="empty-icon">⟡</div><div class="empty-text">Sinyal bekleniyor...</div></div>';
+    return;
+  }
+
+  // Sort by signal score desc, then scanner score
+  entries.sort((a,b)=>{
+    const aS = a[1].sig?.long?.score||0; const bS = b[1].sig?.long?.score||0;
+    if(bS!==aS) return bS-aS;
+    return (b[1].sc?.score||0)-(a[1].sc?.score||0);
+  });
+
+  let buyCount = 0;
+  const html = entries.map(([inst, data]) => {
+    const name  = data.name || inst.replace('-USDT-SWAP','');
+    const sig   = data.sig || {};
+    const sc    = data.sc  || {};
+    const ls    = sig.long || {};
+    const sigSc = ls.score || 0;
+    const scSc  = sc.score || 0;
+    const isBuy = ls.enter && sigSc >= MIN_SC;
+    if(isBuy) buyCount++;
+
+    const dispSc  = sigSc || scSc;
+    const dispMax = sigSc ? MAX_SC : 10;
+    const pct     = Math.min(100, Math.round(dispSc/dispMax*100));
+    const thresh  = sigSc ? THRESH_PCT : (4/10*100).toFixed(1);
+
+    const barColor = isBuy ? 'var(--green)' : pct>=60 ? 'var(--yellow)' : 'var(--text3)';
+    const rsiVal   = sc.rsi || ls.rsi || 0;
+    const rsiColor = rsiVal>70 ? 'var(--red)' : rsiVal<30 ? 'var(--yellow)' : 'var(--text3)';
+    const rowCls   = isBuy ? 'sbar-row sbar-buy' : (_selCoin===inst ? 'sbar-row sbar-sel' : 'sbar-row');
+
+    return `<div class="${rowCls}" id="sbar-${inst}" onclick="selectSig('${inst}')">
+      <div class="sbar-name">${name}</div>
+      <div class="sbar-track">
+        <div class="sbar-thresh" style="left:${thresh}%"></div>
+        <div class="sbar-fill" id="sbf-${inst}" style="width:0%;background:${barColor}"></div>
       </div>
+      <div class="sbar-score" style="color:${barColor}">${dispSc}/${dispMax}</div>
+      <span class="sbar-badge ${isBuy?'sb-buy':'sb-hold'}">${isBuy?'BUY':'HOLD'}</span>
+      <div class="sbar-rsi" style="color:${rsiColor}">${rsiVal?'RSI '+rsiVal.toFixed(0):''}</div>
+    </div>`;
+  }).join('');
+
+  document.getElementById('sig-bar-list').innerHTML = html;
+  document.getElementById('sig-buy-cnt').textContent = buyCount;
+  document.getElementById('sig-scan-cnt').textContent = entries.length+' coin';
+
+  // Animate bars
+  requestAnimationFrame(()=>{
+    entries.forEach(([inst, data])=>{
+      const ls = data.sig?.long||{};
+      const sc = data.sc||{};
+      const dispSc  = ls.score||sc.score||0;
+      const dispMax = ls.score ? MAX_SC : 10;
+      const pct = Math.min(100, Math.round(dispSc/dispMax*100));
+      const el = document.getElementById('sbf-'+inst);
+      if(el) setTimeout(()=>{ el.style.width=pct+'%'; }, 60);
+    });
+  });
+
+  // Timestamp
+  const n=new Date();
+  document.getElementById('sig-updated').textContent =
+    [n.getHours(),n.getMinutes(),n.getSeconds()].map(x=>String(x).padStart(2,'0')).join(':')+' güncellendi';
+
+  // Re-render scanner mini cards
+  renderScannerScores();
+}
+
+function selectSig(inst){
+  _selCoin = inst;
+  document.querySelectorAll('.sbar-row').forEach(r=>{
+    r.classList.remove('sbar-sel');
+    if(r.id==='sbar-'+inst && !r.classList.contains('sbar-buy')) r.classList.add('sbar-sel');
+  });
+
+  const sc   = (S.scannerScores||{})[inst]||{};
+  const name = inst.replace('-USDT-SWAP','');
+  const sym  = name+'USDT';
+  const sig  = S.signals[sym]||{};
+  const ls   = sig.long||{};
+
+  const det = document.getElementById('sig-detail');
+  det.style.display = 'block';
+  document.getElementById('sig-det-coin').textContent = name+'/USDT';
+
+  const badge = document.getElementById('sig-det-badge');
+  if(ls.enter){ badge.textContent='🟢 BUY'; badge.style.cssText='font-size:10px;padding:3px 10px;border-radius:3px;font-weight:700;background:rgba(0,255,136,.12);color:var(--green)'; }
+  else { badge.textContent='⏸ HOLD'; badge.style.cssText='font-size:10px;padding:3px 10px;border-radius:3px;font-weight:700;background:rgba(68,85,119,.2);color:var(--text3)'; }
+
+  const grid = document.getElementById('sig-det-grid');
+  const items = [
+    {l:'Sinyal Skoru', v:ls.score?(ls.score+'/'+MAX_SC):'--', c:ls.score>=MIN_SC?'var(--green)':'var(--text)'},
+    {l:'Scanner Skoru', v:(sc.score||0)+'/10', c:(sc.score||0)>=7?'var(--green)':'var(--text)'},
+    {l:'RSI', v:sc.rsi?sc.rsi.toFixed(1):'--', c:sc.rsi>70?'var(--red)':sc.rsi<30?'var(--yellow)':'var(--text)'},
+    {l:'Giriş', v:ls.entry?fmtP(ls.entry,sym):'--', c:'var(--text)'},
+    {l:'Stop Loss', v:ls.sl?fmtP(ls.sl,sym):'--', c:'var(--red)'},
+    {l:'Take Profit', v:ls.tp?fmtP(ls.tp,sym):'--', c:'var(--green)'},
+  ];
+  grid.innerHTML = items.map(({l,v,c})=>`
+    <div style="background:var(--bg2);border-radius:4px;padding:7px 10px">
+      <div style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">${l}</div>
+      <div style="font-size:13px;font-weight:600;margin-top:3px;color:${c}">${v}</div>
+    </div>`).join('');
+
+  const reason = ls.reason||sc.reason||'';
+  const inds = [];
+  [['ST↑(+2)','ST↑',true],['ST↓','ST↓',false],
+   ['EMA↑↑(+2)','EMA↑↑',true],['EMA↑(+1)','EMA↑',true],['EMA↓','EMA↓',false],
+   ['MACD↑(+2)','MACD↑',true],['MACD+(+1)','MACD+',true],['MACD↓','MACD↓',false],
+   ['P>EMA21(+1)','P>EMA21',true],['VWAP(+1)','VWAP',true],['VOL↑','VOL↑',true],
+  ].forEach(([pat,lbl,ok])=>{
+    if(reason.includes(pat)) inds.push({l:lbl,ok});
+  });
+  document.getElementById('sig-det-inds').innerHTML = inds.map(i=>
+    `<span style="font-size:9px;padding:2px 7px;border-radius:3px;background:${i.ok?'rgba(0,255,136,.1)':'rgba(68,85,119,.2)'};color:${i.ok?'var(--green)':'var(--text3)'}">${i.l}</span>`
+  ).join('');
+}
+
+function renderScannerScores(){
+  const el = document.getElementById('sig-scanner-grid');
+  if(!el||!S.scannerScores) return;
+  const sorted = Object.entries(S.scannerScores).sort((a,b)=>(b[1].score||0)-(a[1].score||0));
+  if(!sorted.length) return;
+  el.innerHTML = sorted.map(([inst,sc])=>{
+    const name = inst.replace('-USDT-SWAP','');
+    const score = sc.score||0;
+    const color = score>=7?'var(--green)':score>=5?'var(--yellow)':'var(--text3)';
+    return `<div class="sc-mini" onclick="selectSig('${inst}')">
+      <div><div class="sc-mini-name">${name}</div><div class="sc-mini-rsi">${sc.rsi?'RSI '+sc.rsi.toFixed(0):''}</div></div>
+      <div class="sc-mini-score" style="color:${color}">${score}/10</div>
     </div>`;
   }).join('');
 }
-
 /* ── REGIME ── */
 function renderRegime(){
   const r=S.regime; if(!r||!r.name) return;
@@ -620,6 +818,9 @@ function renderRegime(){
   const conf=Math.round((r.confidence||0)*100);
   document.getElementById('r-regime').innerHTML=`<span class="${cls}">${label}</span>`;
   document.getElementById('t-reg').textContent=label;
+  // Sinyal sayfası rejim kutusu
+  const sigReg=document.getElementById('sig-regime');
+  if(sigReg){ sigReg.textContent=label; sigReg.style.color=name.includes('UP')?'var(--green)':name.includes('DOWN')?'var(--red)':'var(--yellow)'; }
   document.getElementById('r-conf').textContent=conf+'% güven';
   document.getElementById('r-adx').textContent=r.adx_1h!=null?(+r.adx_1h).toFixed(1):'--';
   document.getElementById('r-mult').textContent='×'+(r.pos_mult||1);
@@ -769,7 +970,15 @@ poll();
 load24h();
 setInterval(poll, 5000);
 setInterval(load24h, 30000);
-setInterval(()=>{ if(curPage==='signals') renderSignals(); }, 10000);
+// Sinyal paneli 5 saniyede bir güncelle
+setInterval(()=>{ if(curPage==='signals'){ renderSignals(); } }, 5000);
+// Countdown timer
+setInterval(()=>{
+  _sigCountdown--;
+  if(_sigCountdown<=0) _sigCountdown=60;
+  const el=document.getElementById('sig-countdown');
+  if(el) el.textContent='~'+_sigCountdown+'s';
+}, 1000);
 </script>
 </body>
 </html>
