@@ -260,7 +260,13 @@ def get_open_positions() -> list:
         })
 
         state_key       = sym + ("_short" if side == "short" else "")
-        is_bot_position = inst_id in _bot_opened_positions or state_key in engine_state["open_positions"]
+        # Deploy sonrası _bot_opened_positions sıfırlanır — engine_state veya tüm pozisyonlar bot'a ait say
+        is_bot_position = (inst_id in _bot_opened_positions 
+                          or state_key in engine_state["open_positions"]
+                          or engine_state.get("open_positions", {}).get(sym) is not None)
+        # Eğer bot pozisyonu ise _bot_opened_positions'a ekle (restart recovery)
+        if is_bot_position and inst_id not in _bot_opened_positions:
+            _bot_opened_positions.add(inst_id)
 
         if is_bot_position:
             with _lock:
@@ -1110,7 +1116,7 @@ def bot_loop():
                 _open_cnt     = len(_bot_pos_list)
                 _open_longs   = {p["instId"] for p in _bot_pos_list if p.get("side")=="long"}
                 _long_cnt     = len(_open_longs)
-                _long_lim     = MAX_POSITIONS // 2 + (MAX_POSITIONS % 2)
+                _long_lim     = MAX_POSITIONS  # Tüm slotlar long için kullanılabilir
 
                 _log(f"[EMIR] signals:{len(signals)} pos:{_open_cnt}/{MAX_POSITIONS} long:{_long_cnt}/{_long_lim} rejim:{current_regime}")
 
@@ -1236,7 +1242,7 @@ def bot_loop():
 
             open_longs  = {p["instId"] for p in bot_positions if p.get("side") == "long"}
             open_shorts = {p["instId"] for p in bot_positions if p.get("side") == "short"}
-            long_limit  = MAX_POSITIONS // 2 + (MAX_POSITIONS % 2)
+            long_limit  = MAX_POSITIONS  # Tüm slotlar long için
             short_limit = MAX_POSITIONS // 2
             long_count  = len(open_longs)
             short_count = len(open_shorts)
