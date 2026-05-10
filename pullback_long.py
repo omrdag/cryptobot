@@ -204,14 +204,21 @@ class PullbackLongStrategy:
             effective_min += 1
 
         if score >= effective_min:
-            # SL/TP hesapla
+            # SL/TP hesapla — 1H ATR tercih et, yoksa 5m ATR × 6
             try:
-                atr_val = float(_atr(df, 14).iloc[-1])
-                sl = close - atr_val * 2.0
-                tp = close + atr_val * 4.0
-                if sl <= 0:
-                    sl = close * 0.97
-                    tp = close * 1.06
+                if df_1h is not None and len(df_1h) >= 15:
+                    atr_val = float(_atr(df_1h, 14).iloc[-1])
+                else:
+                    atr_val = float(_atr(df, 14).iloc[-1]) * 6.0
+
+                sl_mult = float(os.getenv("SL_ATR_MULT", "2.0"))
+                sl = close - atr_val * sl_mult
+                tp = close + atr_val * sl_mult * 2.5  # 1:2.5 R/R
+
+                # Minimum SL mesafesi: %0.8
+                if (close - sl) / close < 0.008:
+                    sl = close * 0.992
+                    tp = close * (1 + 0.008 * 2.5)
             except:
                 sl = close * 0.97
                 tp = close * 1.06
