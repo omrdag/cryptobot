@@ -1112,11 +1112,12 @@ def bot_loop():
 
             # ── EMİR AÇMA — signals hazır, hemen işle ────────────────────────
             try:
-                _bot_pos_list = [p for p in positions if p["instId"] in _bot_opened_positions]
+                # Tüm açık pozisyonları say (restart sonrası _bot_opened_positions boşalır)
+                _bot_pos_list = positions  # tüm pozisyonlar
                 _open_cnt     = len(_bot_pos_list)
                 _open_longs   = {p["instId"] for p in _bot_pos_list if p.get("side")=="long"}
                 _long_cnt     = len(_open_longs)
-                _long_lim     = MAX_POSITIONS  # Tüm slotlar long için kullanılabilir
+                _long_lim     = MAX_POSITIONS
 
                 _log(f"[EMIR] signals:{len(signals)} pos:{_open_cnt}/{MAX_POSITIONS} long:{_long_cnt}/{_long_lim} rejim:{current_regime}")
 
@@ -1137,8 +1138,12 @@ def bot_loop():
 
                     _log(f"[EMIR-CHK] {_esym} enter={_lenter} score={_lscore} entry={_lentry:.4f} min={LONG_MIN_SCORE}")
 
+                    # Zaten bu coinde pozisyon var mı?
+                    _already_open = any(p.get("instId")==_einst for p in positions)
+                    if _already_open:
+                        _log(f"⏭ {_esym} zaten açık pozisyon var — atlanıyor")
                     if (_lenter and _lentry > 0 and _lscore >= LONG_MIN_SCORE
-                            and _einst not in _open_longs
+                            and not _already_open
                             and _long_cnt < _long_lim
                             and current_regime != "NO_TRADE"
                             and _lrsi < LONG_RSI_MAX):
@@ -1236,7 +1241,7 @@ def bot_loop():
                         }
                 except Exception as _ge: _log(f"[GRID] Hata: {_ge}", "warning")
 
-            bot_positions = [p for p in positions if p["instId"] in _bot_opened_positions]
+            bot_positions = positions  # tüm açık pozisyonlar
             open_count    = len(bot_positions)
             _log(f"[EMIR] bot_pos:{open_count} max:{MAX_POSITIONS} sinyaller:{len(signals)}")
 
